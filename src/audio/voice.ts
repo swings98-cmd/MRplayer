@@ -1,5 +1,6 @@
 /**
  * Voice = 한 번의 재생. 재생할 때마다 새로 만들고, 끝나면 버린다.
+ * 음원 추출(OfflineAudioContext)도 같은 Voice로 렌더링해서, 들리는 소리와 파일이 똑같다.
  * (AudioBufferSourceNode는 한 번만 start할 수 있으므로 재사용하지 않는다)
  *
  * source → env(큐 볼륨 곡선) → ctl(시작/정지 디클릭, 수동 페이드 아웃) → 출력
@@ -29,7 +30,7 @@ export class Voice {
   readonly startTime: number
   onEnded: ((v: Voice) => void) | null = null
 
-  private readonly ctx: AudioContext
+  private readonly ctx: BaseAudioContext
   private readonly source: AudioBufferSourceNode
   private readonly env: GainNode
   private readonly ctl: GainNode
@@ -38,7 +39,7 @@ export class Voice {
   private ended = false
 
   constructor(
-    ctx: AudioContext,
+    ctx: BaseAudioContext,
     destination: AudioNode,
     buffer: AudioBuffer,
     audioId: string,

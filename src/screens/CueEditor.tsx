@@ -23,6 +23,7 @@ import { useEditHistory } from '../store/editHistory.ts'
 import { usePlayerStore } from '../store/playerStore.ts'
 import { useProjectStore } from '../store/projectStore.ts'
 import type { AudioMeta, Cue } from '../store/types.ts'
+import { ExportDialog } from './ExportDialog.tsx'
 import { MarkerList } from './MarkerList.tsx'
 import { isTyping } from './usePlayShortcuts.ts'
 
@@ -44,6 +45,7 @@ export function CueEditor({ cue, meta }: Props) {
   const cursor = storeCursor?.cueId === cue.id ? storeCursor.time : cue.inPoint
   const setCursor = (t: number) => setStoreCursor(cue.id, t)
   const [previewOnRelease, setPreviewOnRelease] = useState(true)
+  const [exporting, setExporting] = useState(false)
 
   const duration = meta.duration
   const out = cue.outPoint ?? duration
@@ -278,10 +280,14 @@ export function CueEditor({ cue, meta }: Props) {
       </div>
 
       <div className="row">
+        <button className="btn btn-primary" onClick={() => setExporting(true)}>
+          음원 추출 (WAV/MP3)
+        </button>
         <button className="btn btn-danger" onClick={onReset}>
           모든 편집 초기화
         </button>
       </div>
+      {exporting && <ExportDialog initialCueId={cue.id} onClose={() => setExporting(false)} />}
     </div>
   )
 }

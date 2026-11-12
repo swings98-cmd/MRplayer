@@ -176,6 +176,11 @@ export function SettingsScreen() {
             {OFFLINE_TEXT[offline]}
             {offline === 'ready' && cachedFiles > 0 && ` (파일 ${cachedFiles}개)`}
           </dd>
+          <dt>오픈소스</dt>
+          <dd className="small">
+            MP3 인코더: @breezystack/lamejs (LAME 기반, LGPL-3.0) — 소스: github.com/shijinyu/lamejs · 앱 안의
+            별도 파일(mp3Worker)로 들어 있습니다.
+          </dd>
         </dl>
       </section>
 

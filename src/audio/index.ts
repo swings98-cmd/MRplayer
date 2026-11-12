@@ -15,3 +15,7 @@ export type {
 } from './types.ts'
 export { dbToGain, gainToDb, SILENCE_DB } from './volume.ts'
 export { analyzeAudio, PEAKS_PER_SECOND, type AudioAnalysis } from './analyze.ts'
+export { renderCue, lowerToAvoidClipping, estimatePeak, type RenderedAudio } from './render.ts'
+export { encodeWav16, wavSize } from './wav.ts'
+export { encodeMp3, effectiveKbps, mp3Size, MP3_MAX_SAMPLE_RATE } from './mp3.ts'
+export { sniffSampleRate } from './sniff.ts'

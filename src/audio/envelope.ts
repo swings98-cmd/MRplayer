@@ -3,6 +3,8 @@
  * 곡선은 직선 구간들로만 이루어져 있으므로, 꺾이는 지점마다
  * linearRampToValueAtTime을 예약하면 오디오 스레드가 정확히 따라 그린다. (타이머 없음)
  */
+import type { CueSettings } from './types.ts'
+import { dbToGain } from './volume.ts'
 
 export interface CueRange {
   inPoint: number
@@ -14,6 +16,27 @@ export interface CueRange {
 }
 
 const EPS = 1e-6
+
+const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x))
+
+/**
+ * 큐 설정을 파일 길이에 맞게 정리해 볼륨 곡선 범위로 바꾼다.
+ * 재생 엔진과 음원 추출이 이 함수를 함께 쓴다 (들리는 소리 = 추출한 파일).
+ * @param ignoreFadeIn 마커 재생처럼 큐 페이드 인을 쓰지 않을 때
+ */
+export function cueRange(cue: CueSettings, duration: number, ignoreFadeIn = false): CueRange {
+  const inPoint = clamp(Number.isFinite(cue.inPoint) ? cue.inPoint : 0, 0, duration)
+  const rawOut = cue.outPoint === null || !Number.isFinite(cue.outPoint) ? duration : cue.outPoint
+  const outPoint = clamp(rawOut, inPoint, duration)
+  const len = outPoint - inPoint
+  return {
+    inPoint,
+    outPoint,
+    fadeIn: ignoreFadeIn ? 0 : clamp(cue.fadeIn || 0, 0, len),
+    fadeOut: clamp(cue.fadeOut || 0, 0, len),
+    gain: dbToGain(cue.volumeDb),
+  }
+}
 
 /** 파일 위치 x(초)에서의 볼륨 */
 export function envelopeAt(r: CueRange, x: number): number {
