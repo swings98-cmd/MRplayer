@@ -76,6 +76,16 @@ export class Voice {
     return this.ended
   }
 
+  /**
+   * 볼륨 곡선(페이드, 큐 볼륨)만 바꾼다. 재생은 끊지 않는다.
+   * 인/아웃 포인트는 바꿀 수 없으므로(이미 시작한 source의 길이는 고정) 같은 값이어야 한다.
+   */
+  reschedule(range: CueRange): void {
+    if (this.ended) return
+    const now = this.ctx.currentTime
+    scheduleEnvelope(this.env.gain, range, this.position(now), now)
+  }
+
   /** 현재 파일 위치(초) */
   position(now: number): number {
     return Math.min(this.end, this.offset + Math.max(0, now - this.startTime))

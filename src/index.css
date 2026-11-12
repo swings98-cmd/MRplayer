@@ -809,3 +809,187 @@ button {
   font-weight: 700;
   cursor: pointer;
 }
+
+/* ───────── 편집 화면 ───────── */
+.page-wide {
+  max-width: 1200px;
+}
+
+.editor-head {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.waveform-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.waveform-tools .btn {
+  flex: 0 0 auto;
+}
+
+.waveform-hint {
+  margin-left: auto;
+}
+
+.waveform-canvas-wrap {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.waveform-canvas-wrap canvas {
+  display: block;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.waveform-scroll {
+  width: 100%;
+  height: 36px;
+  margin-top: 6px;
+  accent-color: var(--muted);
+}
+
+.editor-transport {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.editor-transport .btn {
+  flex: 0 1 180px;
+  min-height: 60px;
+}
+
+.editor-position {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.editor-position b {
+  font-size: 28px;
+  font-variant-numeric: tabular-nums;
+}
+
+.editor-row {
+  align-items: center;
+  margin-top: 10px;
+}
+
+.editor-row .btn {
+  flex: 0 0 auto;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  color: var(--muted);
+}
+
+.check input {
+  width: 24px;
+  height: 24px;
+  accent-color: var(--accent);
+}
+
+.editor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 0 14px;
+}
+
+.trim-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.trim-row .btn {
+  flex: 1 1 160px;
+}
+
+.time-input {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.time-input input,
+.slider-value input {
+  font: inherit;
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.time-input input {
+  width: 150px;
+  min-height: 56px;
+  padding: 0 12px;
+}
+
+.slider-field {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 14px;
+}
+
+.slider-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.slider-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.slider-value input {
+  width: 84px;
+  min-height: 48px;
+  padding: 0 10px;
+  text-align: right;
+}
+
+.slider-field input[type='range'] {
+  width: 100%;
+  height: 44px;
+  accent-color: var(--accent);
+}
+
+.project-details summary {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  font-size: 19px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.project-details .card {
+  margin: 12px 0 0;
+  background: var(--bg);
+}

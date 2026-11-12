@@ -5,7 +5,7 @@ import { usePlayerStore } from '../store/playerStore.ts'
 const DOUBLE_ESC_MS = 400
 
 /** 글자 입력 중인지 (이때는 단축키를 쓰지 않는다) */
-function isTyping(target: EventTarget | null): boolean {
+export function isTyping(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
   if (target.isContentEditable) return true
   const tag = target.tagName

@@ -1,7 +1,10 @@
 /**
  * 플레이 상태: 대기 큐, 재생 중인 큐, GO/정지 등 조작, 디코딩 캐시 관리.
  *
- * 디코딩 캐시: [재생/일시정지 중인 큐, 대기 큐, 그다음 큐]의 음원만 메모리에 둔다.
+ * 선택한 큐(selectedCueId): 플레이 화면에서 사용자가 고른 큐. 편집 화면이 이 큐를 편집한다.
+ *   GO로 대기 큐가 넘어가도 선택은 그대로 둔다.
+ *
+ * 디코딩 캐시: [재생/일시정지 중인 큐, 대기 큐, 그다음 큐, 선택한 큐]의 음원만 메모리에 둔다.
  * 대기 큐와 다음 큐는 미리 디코딩해서 GO를 누르면 바로 나오게 하고,
  * 나머지는 해제해서 아이패드 메모리가 넘치지 않게 한다.
  */
@@ -20,9 +23,18 @@ interface PlayerState {
   readyAudioIds: Record<string, true>
   /** GO를 눌렀는데 아직 디코딩 중인 큐 */
   waitingCueId: string | null
+  /** 사용자가 고른 큐 (편집 대상) */
+  selectedCueId: string | null
   error: string | null
 
-  setStandby(id: string | null): void
+  /** 대기 큐 지정. select가 true(기본)면 편집 대상으로도 고른다 */
+  setStandby(id: string | null, select?: boolean): void
+  /** 대기 큐는 그대로 두고 편집 대상만 고른다 */
+  select(id: string | null): void
+  /** 편집 화면 미리듣기: 이 큐를 position부터 재생 (대기 큐는 그대로) */
+  playFrom(cueId: string, position?: number): void
+  /** 트림 핸들 미리듣기: center 앞뒤를 짧게 (트림 무시, 큐 볼륨 적용) */
+  previewAround(cueId: string, center: number): void
   moveStandby(delta: number): void
   go(): void
   stop(): void
@@ -47,13 +59,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   function updateCache(): void {
     const list = cues()
     const keepCues = new Set<string>()
-    const { standbyCueId, playingCueId } = get()
+    const { standbyCueId, playingCueId, selectedCueId } = get()
     const si = indexOf(standbyCueId)
     if (si >= 0) {
       keepCues.add(list[si].id)
       if (list[si + 1]) keepCues.add(list[si + 1].id)
     }
     if (playingCueId) keepCues.add(playingCueId)
+    if (selectedCueId) keepCues.add(selectedCueId)
 
     const keepAudio = new Set(list.filter((c) => keepCues.has(c.id)).map((c) => c.audioId))
     // 재생 중인 음원은 큐가 목록에서 사라졌어도 엔진이 쓰고 있을 수 있으므로 남긴다
@@ -73,7 +86,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     if (changed) set({ readyAudioIds: ready })
 
     // 필요한 음원 미리 디코딩 (대기 큐 먼저)
-    const order = [standbyCueId, list[si + 1]?.id, playingCueId]
+    const order = [standbyCueId, list[si + 1]?.id, playingCueId, selectedCueId]
     for (const cueId of order) {
       const cue = list.find((c) => c.id === cueId)
       if (cue) void preload(cue)
@@ -120,12 +133,54 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     playingCueId: null,
     readyAudioIds: {},
     waitingCueId: null,
+    selectedCueId: null,
     error: null,
 
-    setStandby(id) {
+    setStandby(id, select = true) {
       const i = indexOf(id)
       set({ standbyCueId: i >= 0 ? id : null })
+      if (select && i >= 0) set({ selectedCueId: id })
       updateCache()
+    },
+
+    select(id) {
+      set({ selectedCueId: indexOf(id) >= 0 ? id : null })
+      updateCache()
+    },
+
+    playFrom(cueId, position) {
+      const cue = cues().find((c) => c.id === cueId)
+      if (!cue) return
+      const start = () => {
+        try {
+          audioEngine.play(cue, position)
+          set({ playingCueId: cue.id, error: null })
+        } catch (err) {
+          set({ error: `"${cue.name}" 재생 실패: ${err instanceof Error ? err.message : String(err)}` })
+        }
+      }
+      if (audioEngine.isLoaded(cue.audioId)) start()
+      else void preload(cue).then((ok) => ok && start())
+    },
+
+    previewAround(cueId, center) {
+      const cue = cues().find((c) => c.id === cueId)
+      const duration = cue && audioEngine.getDuration(cue.audioId)
+      if (!cue || !duration) return
+      try {
+        audioEngine.play({
+          audioId: cue.audioId,
+          inPoint: Math.max(0, center - 1.5),
+          outPoint: Math.min(duration, center + 1.5),
+          fadeIn: 0.02,
+          fadeOut: 0.15,
+          volumeDb: cue.volumeDb,
+        })
+        // 큐 그대로의 재생이 아니므로 재생 중인 큐로 표시하지 않는다
+        set({ playingCueId: null })
+      } catch {
+        /* 너무 짧은 구간 등은 무시 */
+      }
     },
 
     moveStandby(delta) {
@@ -214,6 +269,12 @@ useProjectStore.subscribe((state) => {
     usePlayerStore.setState({ playingCueId: null, waitingCueId: null })
   }
 
+  // 재생 중인 큐의 설정이 바뀌었으면 지금 나는 소리에 바로 반영
+  const playing = p.playingCueId ? list.find((c) => c.id === p.playingCueId) : undefined
+  if (playing && !projectChanged && before.find((c) => c.id === playing.id) !== playing) {
+    audioEngine.applyCueSettings(playing)
+  }
+
   let standby = p.standbyCueId
   if (projectChanged || before.length === 0) {
     // 프로젝트를 열었을 때 / 빈 목록에 처음 불러왔을 때: 첫 큐
@@ -223,5 +284,8 @@ useProjectStore.subscribe((state) => {
     const oldIndex = before.findIndex((c) => c.id === standby)
     standby = list[Math.min(oldIndex, list.length - 1)]?.id ?? null
   }
-  usePlayerStore.getState().setStandby(standby)
+  // 선택한 큐가 사라졌거나(삭제, 프로젝트 전환) 아직 없으면 대기 큐를 선택
+  const selectedExists = p.selectedCueId !== null && list.some((c) => c.id === p.selectedCueId)
+  if (projectChanged || !selectedExists) usePlayerStore.setState({ selectedCueId: standby })
+  usePlayerStore.getState().setStandby(standby, false)
 })

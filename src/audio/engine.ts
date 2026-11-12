@@ -250,6 +250,43 @@ export class AudioEngine {
   }
 
   /**
+   * 재생/일시정지 중인 큐의 설정이 바뀌었을 때 호출. 지금 나는 소리에 바로 반영한다.
+   * - 페이드/볼륨만 바뀌면: 재생을 끊지 않고 볼륨 곡선만 다시 예약
+   * - 인/아웃 포인트가 바뀌면: 지금 위치(새 범위 안으로 맞춤)에서 다시 재생
+   * - 지금 위치가 새 아웃 포인트를 지났으면: 정지
+   * 다른 음원을 재생 중이면 무시한다.
+   */
+  applyCueSettings(cue: CueSettings): void {
+    const buffer = this.buffers.get(cue.audioId)
+    if (!buffer) return
+    const next = toRange(cue, buffer.duration)
+    if (next.outPoint - next.inPoint < MIN_LENGTH) return
+
+    if (this.state === 'paused' && this.paused?.cue.audioId === cue.audioId) {
+      const position = clamp(this.paused.position, next.inPoint, next.outPoint - MIN_LENGTH)
+      this.paused = { cue, position }
+      this.emit()
+      return
+    }
+    if (!this.current || !this.currentCue || !this.ctx || this.currentCue.audioId !== cue.audioId) return
+
+    const prev = toRange(this.currentCue, buffer.duration)
+    this.currentCue = cue
+    if (this.state === 'fading') return // 정지하려고 줄어드는 중이면 그대로 둔다
+
+    if (prev.inPoint === next.inPoint && prev.outPoint === next.outPoint) {
+      this.current.reschedule(next)
+      return
+    }
+    const pos = this.current.position(this.ctx.currentTime)
+    if (pos >= next.outPoint - 0.05) {
+      this.stop()
+      return
+    }
+    this.play(cue, Math.max(pos, next.inPoint))
+  }
+
+  /**
    * 위치 이동(초, 파일 기준). 재생 중이면 그 지점부터 다시 재생하고,
    * 일시정지 중이면 이어 재생할 위치만 바꾼다. 정지 상태면 무시.
    */
