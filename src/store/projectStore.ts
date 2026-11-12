@@ -5,10 +5,13 @@
 import { create } from 'zustand'
 import { analyzeAudio, audioEngine } from '../audio/index.ts'
 import * as db from './db.ts'
-import type { AudioMeta, Cue, CuePatch, Project } from './types.ts'
+import type { AudioMeta, Cue, CuePatch, Marker, Project } from './types.ts'
 
 const CURRENT_PROJECT_KEY = 'currentProjectId'
-const AUTOSAVE_DELAY_MS = 500
+/** 마지막 변경 후 이만큼 조용하면 저장 */
+const AUTOSAVE_DELAY_MS = 300
+/** 계속 바꾸는 중이어도 이 시간 안에는 한 번 저장 */
+const AUTOSAVE_MAX_WAIT_MS = 1000
 const DEFAULT_PROJECT_NAME = '새 프로젝트'
 
 /** 불러올 수 있는 확장자 */
@@ -51,6 +54,10 @@ interface ProjectState {
   duplicateCue(id: string): Promise<string | null>
   /** 순서 변경 */
   moveCue(fromIndex: number, toIndex: number): Promise<void>
+  /** 마커 추가 ("마커 N" 자동 이름). 마커는 항상 시간순으로 저장한다. */
+  addMarker(cueId: string, time: number): Marker | null
+  updateMarker(cueId: string, markerId: string, patch: Partial<Omit<Marker, 'id'>>): void
+  deleteMarker(cueId: string, markerId: string): void
   /** 미뤄 둔 저장을 지금 한다 */
   flushSaves(): Promise<void>
 }
@@ -58,6 +65,10 @@ interface ProjectState {
 function newId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function sortMarkers(markers: Marker[]): Marker[] {
+  return [...markers].sort((a, b) => a.time - b.time)
 }
 
 function stripExtension(fileName: string): string {
@@ -80,12 +91,17 @@ function message(err: unknown): string {
 /** 저장 대기 중인 큐: cueId → { projectId, cue } */
 const pending = new Map<string, { projectId: string; cue: Cue }>()
 let saveTimer: ReturnType<typeof setTimeout> | null = null
+/** 저장되지 않은 첫 변경 시각 */
+let firstPendingAt = 0
 let flushing: Promise<void> = Promise.resolve()
 
 function scheduleSave(projectId: string, cue: Cue): void {
+  const now = Date.now()
+  if (pending.size === 0) firstPendingAt = now
   pending.set(cue.id, { projectId, cue })
   if (saveTimer) clearTimeout(saveTimer)
-  saveTimer = setTimeout(() => void flushPending(), AUTOSAVE_DELAY_MS)
+  const wait = Math.max(0, Math.min(AUTOSAVE_DELAY_MS, firstPendingAt + AUTOSAVE_MAX_WAIT_MS - now))
+  saveTimer = setTimeout(() => void flushPending(), wait)
 }
 
 function flushPending(): Promise<void> {
@@ -325,6 +341,34 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       set({ cues })
       replaceProject(updated)
       await db.putProject(updated)
+    },
+
+    addMarker(cueId, time) {
+      const cue = get().cues.find((c) => c.id === cueId)
+      if (!cue) return null
+      // 남아 있는 "마커 N" 중 가장 큰 번호 다음 (중간 번호를 지워도 겹치지 않게)
+      const used = cue.markers.map((m) => Number(/^마커 (\d+)$/.exec(m.name)?.[1] ?? 0))
+      const n = Math.max(cue.markers.length, ...used) + 1
+      const marker: Marker = { id: newId(), name: `마커 ${n}`, time: Math.round(time * 1000) / 1000, color: 'orange' }
+      get().updateCue(cueId, { markers: sortMarkers([...cue.markers, marker]) })
+      return marker
+    },
+
+    updateMarker(cueId, markerId, patch) {
+      const cue = get().cues.find((c) => c.id === cueId)
+      if (!cue) return
+      const markers = cue.markers.map((m) =>
+        m.id === markerId
+          ? { ...m, ...patch, ...(patch.time !== undefined ? { time: Math.round(patch.time * 1000) / 1000 } : {}) }
+          : m,
+      )
+      get().updateCue(cueId, { markers: sortMarkers(markers) })
+    },
+
+    deleteMarker(cueId, markerId) {
+      const cue = get().cues.find((c) => c.id === cueId)
+      if (!cue) return
+      get().updateCue(cueId, { markers: cue.markers.filter((m) => m.id !== markerId) })
     },
 
     flushSaves: flushPending,

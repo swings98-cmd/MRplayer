@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { usePlayerStore } from '../store/playerStore.ts'
+import { useProjectStore } from '../store/projectStore.ts'
 
 /** Esc를 이 시간 안에 두 번 누르면 패닉 */
 const DOUBLE_ESC_MS = 400
@@ -65,6 +66,27 @@ export function usePlayShortcuts(): void {
           e.preventDefault()
           p.moveStandby(1)
           break
+        case 'KeyM':
+          // 지금 위치에 마커 (재생은 끊지 않는다)
+          e.preventDefault()
+          if (!e.repeat) p.addMarkerHere()
+          break
+        case 'KeyR':
+          e.preventDefault()
+          if (!e.repeat) p.restartLast()
+          break
+        default: {
+          // 1~9: 선택한 큐의 해당 순서 마커부터 재생
+          const digit = /^(?:Digit|Numpad)([1-9])$/.exec(e.code)
+          if (digit && !e.repeat && p.selectedCueId) {
+            const cue = useProjectStore.getState().cues.find((c) => c.id === p.selectedCueId)
+            const marker = cue?.markers[Number(digit[1]) - 1]
+            if (cue && marker) {
+              e.preventDefault()
+              p.playMarker(cue.id, marker.id)
+            }
+          }
+        }
       }
     }
     const onKeyUp = (e: KeyboardEvent) => {

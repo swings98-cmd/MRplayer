@@ -16,13 +16,18 @@ export interface AppSettings {
   masterVolumeDb: number
   /** 숨은 옵션: 출력 경로 강제 */
   outputMode: OutputMode
+  /** 마커 재생 시 마커보다 몇 초 앞에서 시작할지 */
+  prerollSeconds: number
 }
+
+export const PREROLL_CHOICES = [0, 2, 4, 8] as const
 
 export const DEFAULT_SETTINGS: AppSettings = {
   goMode: 'cut',
   fadeOutSeconds: 3,
   masterVolumeDb: 0,
   outputMode: 'auto',
+  prerollSeconds: 0,
 }
 
 const KEY = 'appSettings'
@@ -43,7 +48,13 @@ function applyToEngine(s: Partial<AppSettings>): void {
 }
 
 function pick(s: SettingsState): AppSettings {
-  return { goMode: s.goMode, fadeOutSeconds: s.fadeOutSeconds, masterVolumeDb: s.masterVolumeDb, outputMode: s.outputMode }
+  return {
+    goMode: s.goMode,
+    fadeOutSeconds: s.fadeOutSeconds,
+    masterVolumeDb: s.masterVolumeDb,
+    outputMode: s.outputMode,
+    prerollSeconds: s.prerollSeconds,
+  }
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({

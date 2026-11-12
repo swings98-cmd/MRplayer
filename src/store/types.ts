@@ -8,10 +8,14 @@ export interface Project {
   updatedAt: number
 }
 
+export type MarkerColor = 'orange' | 'yellow' | 'green' | 'blue' | 'purple' | 'pink'
+
 export interface Marker {
   id: string
   name: string
   time: number
+  /** 없으면 orange */
+  color?: MarkerColor
 }
 
 export interface Cue {

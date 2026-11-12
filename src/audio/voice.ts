@@ -44,6 +44,8 @@ export class Voice {
     audioId: string,
     range: CueRange,
     offset: number,
+    /** 시작할 때 0에서 올라오는 시간(초). 기본은 딸깍 소리만 막는 10ms */
+    startFade: number = DECLICK,
   ) {
     this.ctx = ctx
     this.audioId = audioId
@@ -64,8 +66,9 @@ export class Voice {
     scheduleEnvelope(this.env.gain, range, offset, when)
 
     this.ctl.gain.setValueAtTime(0, when)
-    this.ctl.gain.linearRampToValueAtTime(1, when + DECLICK)
-    this.ctlRamp = { t0: when, v0: 0, t1: when + DECLICK, v1: 1 }
+    const fadeEnd = when + Math.max(DECLICK, startFade)
+    this.ctl.gain.linearRampToValueAtTime(1, fadeEnd)
+    this.ctlRamp = { t0: when, v0: 0, t1: fadeEnd, v1: 1 }
 
     this.source.onended = () => this.finish()
     // duration을 주면 아웃 포인트에서 오디오 스레드가 알아서 멈춘다

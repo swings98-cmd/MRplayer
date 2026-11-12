@@ -6,12 +6,14 @@ interface Props {
   end: number
   position: number
   disabled?: boolean
+  /** 막대 위 마커 눈금 */
+  marks?: { time: number; color: string; label: string }[]
   /** 손을 뗄 때 한 번 호출 */
   onSeek: (position: number) => void
 }
 
 /** 탭하거나 끌어서 위치를 옮기는 진행 막대. 끄는 동안에는 미리보기만 하고, 손을 떼면 이동한다. */
-export function ProgressBar({ start, end, position, disabled, onSeek }: Props) {
+export function ProgressBar({ start, end, position, disabled, marks, onSeek }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const [preview, setPreview] = useState<number | null>(null)
   const span = Math.max(0.001, end - start)
@@ -53,6 +55,16 @@ export function ProgressBar({ start, end, position, disabled, onSeek }: Props) {
       <div className="progress-track">
         <div className="progress-fill" style={{ width: `${ratio * 100}%` }} />
       </div>
+      {marks
+        ?.filter((m) => m.time >= start && m.time <= end)
+        .map((m, i) => (
+          <span
+            key={i}
+            className="progress-mark"
+            title={m.label}
+            style={{ left: `${((m.time - start) / span) * 100}%`, background: m.color }}
+          />
+        ))}
       <div className="progress-thumb" style={{ left: `${ratio * 100}%` }} />
     </div>
   )

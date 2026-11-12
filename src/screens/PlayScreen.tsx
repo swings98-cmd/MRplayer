@@ -1,11 +1,13 @@
 import { CueList } from '../components/CueList.tsx'
 import { formatDuration } from '../components/format.ts'
+import { markerHex } from '../components/markerColors.ts'
 import { ProgressBar } from '../components/ProgressBar.tsx'
 import { useEngineSnapshot, useEngineState } from '../components/useEngine.ts'
 import { isEngineActive, usePlayerStore } from '../store/playerStore.ts'
 import { useProjectStore } from '../store/projectStore.ts'
 import { useSettingsStore } from '../store/settingsStore.ts'
 import type { Cue } from '../store/types.ts'
+import { MarkerPad } from './MarkerPad.tsx'
 import { usePlayShortcuts } from './usePlayShortcuts.ts'
 
 const canKeyboard = typeof window !== 'undefined' && window.matchMedia?.('(pointer: fine)').matches
@@ -61,6 +63,7 @@ export function PlayScreen() {
           onDuplicate={(cue) => void duplicateCue(cue.id)}
           onDelete={onDelete}
         />
+        <MarkerPad />
       </section>
 
       <aside className="play-panel">
@@ -70,7 +73,7 @@ export function PlayScreen() {
         <MasterVolume />
         {canKeyboard && (
           <p className="muted small shortcut-help">
-            스페이스 GO · Esc 정지 (두 번: 패닉) · P 일시정지 · F 페이드 아웃 · ↑↓ 대기 큐
+            스페이스 GO · Esc 정지 (두 번: 패닉) · P 일시정지 · F 페이드 아웃 · ↑↓ 대기 큐 · 1~9 마커 · M 마커 추가 · R 다시
           </p>
         )}
       </aside>
@@ -143,7 +146,13 @@ function NowPlaying() {
           <span className="now-time">-{formatDuration(Math.ceil(end - pos))}</span>
         </div>
       </div>
-      <ProgressBar start={start} end={end} position={pos} onSeek={seek} />
+      <ProgressBar
+        start={start}
+        end={end}
+        position={pos}
+        onSeek={seek}
+        marks={playing.markers.map((m) => ({ time: m.time, color: markerHex(m.color), label: m.name }))}
+      />
     </div>
   )
 }

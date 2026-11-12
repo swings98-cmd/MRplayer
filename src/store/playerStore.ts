@@ -9,10 +9,27 @@
  * 나머지는 해제해서 아이패드 메모리가 넘치지 않게 한다.
  */
 import { create } from 'zustand'
-import { audioEngine } from '../audio/index.ts'
+import { audioEngine, type PlayOptions } from '../audio/index.ts'
+import { pickEditValues, sameEditValues } from './cueRules.ts'
 import { loadCueAudio, useProjectStore } from './projectStore.ts'
 import { useSettingsStore } from './settingsStore.ts'
-import type { Cue } from './types.ts'
+import type { Cue, Marker } from './types.ts'
+
+/** 마커에서 바로 시작할 때 딸깍 소리만 막는 페이드(초) */
+export const MARKER_START_FADE = 0.02
+/** 프리롤로 시작할 때 자연스럽게 올라오는 페이드(초, 프리롤보다 길지 않게) */
+export const PREROLL_START_FADE = 0.5
+
+/** 마지막으로 재생을 시작한 지점 ("다시" 버튼용) */
+export interface StartPoint {
+  cueId: string
+  position: number
+  options?: PlayOptions
+  /** 마커에서 시작했으면 그 마커 */
+  markerId?: string
+  /** 화면 표시용: 어디서 시작했는지 */
+  label: string
+}
 
 interface PlayerState {
   /** 다음에 GO 하면 나올 큐. 목록 끝까지 갔으면 null */
@@ -23,8 +40,11 @@ interface PlayerState {
   readyAudioIds: Record<string, true>
   /** GO를 눌렀는데 아직 디코딩 중인 큐 */
   waitingCueId: string | null
-  /** 사용자가 고른 큐 (편집 대상) */
+  /** 사용자가 고른 큐 (편집 대상, 플레이 화면 마커 목록 대상) */
   selectedCueId: string | null
+  /** 정지 상태의 "현재 위치" (편집 화면 탭 위치, 마지막으로 멈춘 위치). 재생 중에는 엔진 위치를 쓴다 */
+  cursor: { cueId: string; time: number } | null
+  lastStart: StartPoint | null
   error: string | null
 
   /** 대기 큐 지정. select가 true(기본)면 편집 대상으로도 고른다 */
@@ -35,6 +55,17 @@ interface PlayerState {
   playFrom(cueId: string, position?: number): void
   /** 트림 핸들 미리듣기: center 앞뒤를 짧게 (트림 무시, 큐 볼륨 적용) */
   previewAround(cueId: string, center: number): void
+  setCursor(cueId: string, time: number): void
+  /** 이 큐의 지금 위치: 재생/일시정지 중이면 엔진 위치, 아니면 커서(없으면 인 포인트) */
+  positionOf(cueId: string): number
+  /** 마커 지점부터 재생 (프리롤 설정 적용, 큐 페이드 인 대신 짧은 페이드) */
+  playMarker(cueId: string, markerId: string): void
+  /** 지금 위치 기준 이전(-1)/다음(+1) 마커부터 재생 */
+  playAdjacentMarker(cueId: string, dir: -1 | 1): void
+  /** 마지막으로 시작한 지점에서 다시 */
+  restartLast(): void
+  /** 지금 위치에 마커 추가: 재생 중이면 재생 중인 큐, 아니면 선택한 큐. 재생은 끊지 않는다 */
+  addMarkerHere(): Marker | null
   moveStandby(delta: number): void
   go(): void
   stop(): void
@@ -112,6 +143,29 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     }
   }
 
+  /** 큐를 지정한 지점부터 재생하고 "마지막 시작 지점"으로 기억한다 (대기 큐는 그대로) */
+  function startAt(point: StartPoint): void {
+    const cue = cues().find((c) => c.id === point.cueId)
+    if (!cue) return
+    set({ lastStart: point })
+    const start = () => {
+      try {
+        audioEngine.play(cue, point.position, point.options)
+        set({ playingCueId: cue.id, waitingCueId: null, error: null })
+      } catch (err) {
+        set({ error: `"${cue.name}" 재생 실패: ${err instanceof Error ? err.message : String(err)}` })
+      }
+    }
+    if (audioEngine.isLoaded(cue.audioId)) start()
+    else {
+      set({ waitingCueId: cue.id })
+      void preload(cue).then((ok) => {
+        if (ok && get().waitingCueId === cue.id) start()
+        updateCache()
+      })
+    }
+  }
+
   function standbyAfter(index: number): string | null {
     return cues()[index + 1]?.id ?? null
   }
@@ -134,6 +188,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     readyAudioIds: {},
     waitingCueId: null,
     selectedCueId: null,
+    cursor: null,
+    lastStart: null,
     error: null,
 
     setStandby(id, select = true) {
@@ -151,16 +207,80 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     playFrom(cueId, position) {
       const cue = cues().find((c) => c.id === cueId)
       if (!cue) return
-      const start = () => {
-        try {
-          audioEngine.play(cue, position)
-          set({ playingCueId: cue.id, error: null })
-        } catch (err) {
-          set({ error: `"${cue.name}" 재생 실패: ${err instanceof Error ? err.message : String(err)}` })
-        }
+      const from = position ?? cue.inPoint
+      startAt({ cueId, position: from, label: `${cue.name} ${formatSec(from)}` })
+    },
+
+    setCursor(cueId, time) {
+      set({ cursor: { cueId, time } })
+    },
+
+    positionOf(cueId) {
+      const cue = cues().find((c) => c.id === cueId)
+      if (!cue) return 0
+      const snap = audioEngine.getSnapshot()
+      if (snap.state !== 'stopped' && get().playingCueId === cueId) return audioEngine.getPosition()
+      const c = get().cursor
+      return c && c.cueId === cueId ? c.time : cue.inPoint
+    },
+
+    playMarker(cueId, markerId) {
+      const cue = cues().find((c) => c.id === cueId)
+      const marker = cue?.markers.find((m) => m.id === markerId)
+      if (!cue || !marker) return
+      const out = cue.outPoint ?? useProjectStore.getState().audio[cue.audioId]?.duration ?? Infinity
+      if (marker.time >= out - 0.05) {
+        set({ error: `"${marker.name}"이(가) 아웃 포인트 뒤에 있어 재생할 수 없습니다` })
+        return
       }
-      if (audioEngine.isLoaded(cue.audioId)) start()
-      else void preload(cue).then((ok) => ok && start())
+      const preroll = useSettingsStore.getState().prerollSeconds
+      const from = Math.max(cue.inPoint, marker.time - preroll)
+      // 프리롤 구간이 있으면 자연스럽게, 마커에서 바로 시작하면 딸깍 소리만 막는다
+      const startFade = from < marker.time ? Math.min(PREROLL_START_FADE, marker.time - from) : MARKER_START_FADE
+      startAt({
+        cueId,
+        position: from,
+        options: { ignoreFadeIn: true, startFade },
+        markerId,
+        label: `${cue.name} · ${marker.name}${from < marker.time ? ` (프리롤 ${formatSec(marker.time - from)})` : ''}`,
+      })
+    },
+
+    playAdjacentMarker(cueId, dir) {
+      const cue = cues().find((c) => c.id === cueId)
+      if (!cue || cue.markers.length === 0) return
+      const playing = audioEngine.getSnapshot().state !== 'stopped' && get().playingCueId === cueId
+      const last = get().lastStart
+      // 기준 위치: 재생 중이면 지금 위치, 아니면 마지막으로 시작한 마커(없으면 커서)
+      const lastMarker = last?.cueId === cueId ? cue.markers.find((m) => m.id === last.markerId) : undefined
+      // 기준 위치: 재생 중이면 지금 위치(프리롤 구간이면 시작한 마커), 아니면 마지막으로 시작한 마커(없으면 커서)
+      let ref = playing ? audioEngine.getPosition() : (lastMarker?.time ?? get().positionOf(cueId))
+      if (playing && lastMarker && ref < lastMarker.time) ref = lastMarker.time
+      const sorted = cue.markers
+      let target: Marker | undefined
+      if (dir > 0) target = sorted.find((m) => m.time > ref + 0.05)
+      else {
+        // 재생 중에는 마커를 막 지난 직후(1초 안)면 그 앞 마커로 간다
+        const tolerance = playing ? 1 : 0.001
+        target =
+          [...sorted].reverse().find((m) => m.time < ref - tolerance) ??
+          // 앞 마커가 없으면 지금 구간의 마커부터 다시
+          [...sorted].reverse().find((m) => m.time <= ref + 0.001)
+      }
+      if (target) get().playMarker(cueId, target.id)
+    },
+
+    restartLast() {
+      const last = get().lastStart
+      if (last) startAt(last)
+    },
+
+    addMarkerHere() {
+      const snap = audioEngine.getSnapshot()
+      const { playingCueId, selectedCueId } = get()
+      const cueId = snap.state !== 'stopped' && playingCueId ? playingCueId : selectedCueId
+      if (!cueId) return null
+      return useProjectStore.getState().addMarker(cueId, get().positionOf(cueId))
     },
 
     previewAround(cueId, center) {
@@ -198,6 +318,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       if (i < 0) return
       const cue = cues()[i]
       const next = standbyAfter(i)
+      set({ lastStart: { cueId: cue.id, position: cue.inPoint, label: `${cue.name} 처음` } })
 
       if (audioEngine.isLoaded(cue.audioId)) {
         playCue(cue)
@@ -245,11 +366,26 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   }
 })
 
-// 엔진이 정지 상태가 되면 재생 중 큐 표시를 지운다
+// 엔진이 정지 상태가 되면 재생 중 큐 표시를 지우고, 멈춘 위치를 커서로 남긴다
+let lastActive: { cueId: string; time: number } | null = null
 audioEngine.subscribe((snap) => {
   const { playingCueId } = usePlayerStore.getState()
-  if (snap.state === 'stopped' && playingCueId) usePlayerStore.setState({ playingCueId: null })
+  if (snap.state !== 'stopped') {
+    if (playingCueId) lastActive = { cueId: playingCueId, time: snap.position }
+    return
+  }
+  if (playingCueId) usePlayerStore.setState({ playingCueId: null })
+  if (lastActive) {
+    usePlayerStore.setState({ cursor: lastActive })
+    lastActive = null
+  }
 })
+
+function formatSec(sec: number): string {
+  const m = Math.floor(sec / 60)
+  const s = sec - m * 60
+  return `${m}:${s.toFixed(1).padStart(4, '0')}`
+}
 
 // 큐 목록이 바뀌면(삭제, 순서 변경, 프로젝트 전환) 대기 큐와 재생 큐를 맞춘다
 let prevCues = useProjectStore.getState().cues
@@ -271,7 +407,9 @@ useProjectStore.subscribe((state) => {
 
   // 재생 중인 큐의 설정이 바뀌었으면 지금 나는 소리에 바로 반영
   const playing = p.playingCueId ? list.find((c) => c.id === p.playingCueId) : undefined
-  if (playing && !projectChanged && before.find((c) => c.id === playing.id) !== playing) {
+  const playingBefore = playing && before.find((c) => c.id === playing.id)
+  // 이름/메모/마커만 바뀐 경우는 소리에 영향이 없으므로 건드리지 않는다
+  if (playing && !projectChanged && playingBefore && !sameEditValues(pickEditValues(playingBefore), pickEditValues(playing))) {
     audioEngine.applyCueSettings(playing)
   }
 

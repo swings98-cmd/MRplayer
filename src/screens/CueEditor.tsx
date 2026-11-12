@@ -23,6 +23,7 @@ import { useEditHistory } from '../store/editHistory.ts'
 import { usePlayerStore } from '../store/playerStore.ts'
 import { useProjectStore } from '../store/projectStore.ts'
 import type { AudioMeta, Cue } from '../store/types.ts'
+import { MarkerList } from './MarkerList.tsx'
 import { isTyping } from './usePlayShortcuts.ts'
 
 interface Props {
@@ -33,12 +34,15 @@ interface Props {
 const DOUBLE_TAP_MS = 350
 
 export function CueEditor({ cue, meta }: Props) {
-  const updateCue = useProjectStore((s) => s.updateCue)
+  const { updateCue, addMarker, updateMarker } = useProjectStore()
   const history = useEditHistory()
   const stacks = history.stacks[cue.id]
-  const { playFrom, previewAround, seek, stop, togglePause } = usePlayerStore()
+  const { playFrom, previewAround, seek, stop, togglePause, setCursor: setStoreCursor } = usePlayerStore()
+  const storeCursor = usePlayerStore((s) => s.cursor)
   const snap = useEngineSnapshot()
-  const [cursor, setCursor] = useState(cue.inPoint)
+  // 정지 상태의 위치는 플레이 화면과 같이 쓴다 (마지막으로 멈춘 위치, 파형에서 탭한 위치)
+  const cursor = storeCursor?.cueId === cue.id ? storeCursor.time : cue.inPoint
+  const setCursor = (t: number) => setStoreCursor(cue.id, t)
   const [previewOnRelease, setPreviewOnRelease] = useState(true)
 
   const duration = meta.duration
@@ -78,13 +82,22 @@ export function CueEditor({ cue, meta }: Props) {
   }
 
   // Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z (글자 입력 중에는 입력 칸의 기본 동작)
-  const keyRef = useRef({ undo, redo })
+  const addMarkerHere = () => addMarker(cue.id, playhead)
+
+  const keyRef = useRef({ undo, redo, addMarkerHere })
   useEffect(() => {
-    keyRef.current = { undo, redo }
+    keyRef.current = { undo, redo, addMarkerHere }
   })
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.altKey || isTyping(e.target)) return
+      if (isTyping(e.target) || e.altKey) return
+      // M: 지금 위치에 마커 (재생은 끊지 않는다)
+      if (e.code === 'KeyM' && !e.metaKey && !e.ctrlKey && !e.repeat) {
+        e.preventDefault()
+        keyRef.current.addMarkerHere()
+        return
+      }
+      if (!(e.metaKey || e.ctrlKey)) return
       if (e.code === 'KeyZ') {
         e.preventDefault()
         if (e.shiftKey) keyRef.current.redo()
@@ -160,6 +173,8 @@ export function CueEditor({ cue, meta }: Props) {
           minTrim={MIN_TRIM}
           onSeek={onSeek}
           onTrimEnd={onTrimEnd}
+          markers={cue.markers}
+          onMarkerMove={(id, t) => updateMarker(cue.id, id, { time: t })}
         />
 
         <div className="editor-transport">
@@ -191,6 +206,8 @@ export function CueEditor({ cue, meta }: Props) {
           </label>
         </div>
       </section>
+
+      <MarkerList cue={cue} duration={duration} onAdd={addMarkerHere} />
 
       <div className="editor-grid">
         <section className="card">

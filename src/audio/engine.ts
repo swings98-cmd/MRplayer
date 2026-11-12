@@ -45,7 +45,9 @@ export class AudioEngine {
   private readonly voices = new Set<Voice>()
   private state: PlaybackState = 'stopped'
   private currentCue: CueSettings | null = null
-  private paused: { cue: CueSettings; position: number } | null = null
+  /** 지금 재생이 큐 페이드 인을 무시하는 재생(마커 재생)인지. 이어 재생/위치 이동/설정 변경 때도 유지한다 */
+  private ignoreFadeIn = false
+  private paused: { cue: CueSettings; position: number; ignoreFadeIn: boolean } | null = null
 
   private readonly listeners = new Set<EngineListener>()
   private snapshot: EngineSnapshot
@@ -180,14 +182,17 @@ export class AudioEngine {
    * 재생 중이면 이전 재생은 짧은 페이드(10ms) 후 정지하고 새로 시작한다.
    * @param startAt 파일 위치(초). 주면 그 지점부터 재생 (마커 점프용). 인/아웃 범위로 맞춘다.
    * @param options.fadePreviousSeconds 이전 재생을 이 시간 동안 페이드 아웃하며 새로 재생 (기본 10ms)
+   * @param options.ignoreFadeIn 큐의 페이드 인 설정을 쓰지 않는다 (마커 재생). 페이드 아웃과 아웃 포인트는 그대로.
+   * @param options.startFade 시작할 때 0에서 올라오는 시간(초). 기본 10ms
    */
-  play(cue: CueSettings, startAt?: number, options?: { fadePreviousSeconds?: number }): void {
+  play(cue: CueSettings, startAt?: number, options?: PlayOptions): void {
     const buffer = this.buffers.get(cue.audioId)
     if (!buffer) throw new Error(`로드되지 않은 음원입니다: ${cue.audioId}`)
 
     this.unlock()
     const ctx = this.ensureContext()
-    const range = toRange(cue, buffer.duration)
+    const ignoreFadeIn = options?.ignoreFadeIn ?? false
+    const range = toRange(cue, buffer.duration, ignoreFadeIn)
     if (range.outPoint - range.inPoint < MIN_LENGTH) throw new Error('인/아웃 포인트 사이가 너무 짧습니다')
 
     const from = clamp(startAt ?? range.inPoint, range.inPoint, range.outPoint - MIN_LENGTH)
@@ -195,11 +200,12 @@ export class AudioEngine {
     this.releaseCurrent(Math.max(DECLICK, options?.fadePreviousSeconds ?? DECLICK))
     this.paused = null
 
-    const voice = new Voice(ctx, this.master!, buffer, cue.audioId, range, from)
+    const voice = new Voice(ctx, this.master!, buffer, cue.audioId, range, from, options?.startFade)
     voice.onEnded = (v) => this.handleVoiceEnded(v)
     this.voices.add(voice)
     this.current = voice
     this.currentCue = cue
+    this.ignoreFadeIn = ignoreFadeIn
     this.setState('playing')
   }
 
@@ -232,21 +238,21 @@ export class AudioEngine {
     const position = this.current.position(this.ctx.currentTime)
     const cue = this.currentCue
     this.releaseCurrent(DECLICK)
-    this.paused = { cue, position }
+    this.paused = { cue, position, ignoreFadeIn: this.ignoreFadeIn }
     this.setState('paused')
   }
 
   /** 일시정지한 위치부터 이어서 재생 */
   resume(): void {
     if (this.state !== 'paused' || !this.paused) return
-    const { cue, position } = this.paused
+    const { cue, position, ignoreFadeIn } = this.paused
     const duration = this.getDuration(cue.audioId)
     const out = duration === null ? 0 : toRange(cue, duration).outPoint
     if (position >= out - MIN_LENGTH) {
       this.stop()
       return
     }
-    this.play(cue, position)
+    this.play(cue, position, { ignoreFadeIn })
   }
 
   /**
@@ -259,18 +265,19 @@ export class AudioEngine {
   applyCueSettings(cue: CueSettings): void {
     const buffer = this.buffers.get(cue.audioId)
     if (!buffer) return
-    const next = toRange(cue, buffer.duration)
-    if (next.outPoint - next.inPoint < MIN_LENGTH) return
-
     if (this.state === 'paused' && this.paused?.cue.audioId === cue.audioId) {
+      const next = toRange(cue, buffer.duration)
+      if (next.outPoint - next.inPoint < MIN_LENGTH) return
       const position = clamp(this.paused.position, next.inPoint, next.outPoint - MIN_LENGTH)
-      this.paused = { cue, position }
+      this.paused = { ...this.paused, cue, position }
       this.emit()
       return
     }
     if (!this.current || !this.currentCue || !this.ctx || this.currentCue.audioId !== cue.audioId) return
 
-    const prev = toRange(this.currentCue, buffer.duration)
+    const next = toRange(cue, buffer.duration, this.ignoreFadeIn)
+    if (next.outPoint - next.inPoint < MIN_LENGTH) return
+    const prev = toRange(this.currentCue, buffer.duration, this.ignoreFadeIn)
     this.currentCue = cue
     if (this.state === 'fading') return // 정지하려고 줄어드는 중이면 그대로 둔다
 
@@ -283,7 +290,7 @@ export class AudioEngine {
       this.stop()
       return
     }
-    this.play(cue, Math.max(pos, next.inPoint))
+    this.play(cue, Math.max(pos, next.inPoint), { ignoreFadeIn: this.ignoreFadeIn })
   }
 
   /**
@@ -300,7 +307,7 @@ export class AudioEngine {
       return
     }
     if ((this.state === 'playing' || this.state === 'fading') && this.currentCue) {
-      this.play(this.currentCue, position)
+      this.play(this.currentCue, position, { ignoreFadeIn: this.ignoreFadeIn })
     }
   }
 
@@ -446,7 +453,13 @@ function clamp(x: number, lo: number, hi: number): number {
 }
 
 /** 큐 설정을 파일 길이에 맞게 정리 */
-function toRange(cue: CueSettings, duration: number): CueRange {
+export interface PlayOptions {
+  fadePreviousSeconds?: number
+  ignoreFadeIn?: boolean
+  startFade?: number
+}
+
+function toRange(cue: CueSettings, duration: number, ignoreFadeIn = false): CueRange {
   const inPoint = clamp(Number.isFinite(cue.inPoint) ? cue.inPoint : 0, 0, duration)
   const rawOut = cue.outPoint === null || !Number.isFinite(cue.outPoint) ? duration : cue.outPoint
   const outPoint = clamp(rawOut, inPoint, duration)
@@ -454,7 +467,7 @@ function toRange(cue: CueSettings, duration: number): CueRange {
   return {
     inPoint,
     outPoint,
-    fadeIn: clamp(cue.fadeIn || 0, 0, len),
+    fadeIn: ignoreFadeIn ? 0 : clamp(cue.fadeIn || 0, 0, len),
     fadeOut: clamp(cue.fadeOut || 0, 0, len),
     gain: dbToGain(cue.volumeDb),
   }

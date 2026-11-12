@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import type { OutputMode } from '../audio/index.ts'
 import { formatBytes } from '../components/format.ts'
 import { useEngineSnapshot } from '../components/useEngine.ts'
-import { useSettingsStore, type GoMode } from '../store/settingsStore.ts'
+import { PREROLL_CHOICES, useSettingsStore, type GoMode } from '../store/settingsStore.ts'
 import { useStorageStore, type PersistStatus } from '../store/storageStore.ts'
 
 const PERSIST_TEXT: Record<PersistStatus, string> = {
@@ -27,7 +27,7 @@ const OUTPUT_MODES: { id: OutputMode; label: string }[] = [
 
 export function SettingsScreen() {
   const { persist, usage, quota, requestPersist, refreshEstimate } = useStorageStore()
-  const { goMode, fadeOutSeconds, outputMode, update } = useSettingsStore()
+  const { goMode, fadeOutSeconds, outputMode, prerollSeconds, update } = useSettingsStore()
   const outputKind = useEngineSnapshot().outputKind
 
   useEffect(() => {
@@ -68,6 +68,26 @@ export function SettingsScreen() {
             </button>
           ))}
         </div>
+      </section>
+
+      <section className="card">
+        <h2>마커</h2>
+        <p className="setting-label">프리롤: 마커를 재생할 때 몇 초 앞에서 시작할지</p>
+        <div className="row">
+          {PREROLL_CHOICES.map((s) => (
+            <button
+              key={s}
+              className={`btn chip${prerollSeconds === s ? ' selected' : ''}`}
+              aria-pressed={prerollSeconds === s}
+              onClick={() => update({ prerollSeconds: s })}
+            >
+              {s === 0 ? '끔 (0초)' : `${s}초`}
+            </button>
+          ))}
+        </div>
+        <p className="muted small">
+          프리롤을 켜면 마커보다 그만큼 앞에서 짧은 페이드 인으로 시작합니다. 인 포인트보다 앞으로는 가지 않습니다.
+        </p>
       </section>
 
       <section className="card">

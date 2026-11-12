@@ -9,7 +9,9 @@
  * - 트랙패드 좌우 쓸기: 좌우 스크롤
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { Marker } from '../store/types.ts'
 import { formatTimeMs } from './format.ts'
+import { markerHex } from './markerColors.ts'
 
 interface Props {
   peaks: Uint8Array
@@ -25,8 +27,11 @@ interface Props {
   /** 재생 중이면 재생 위치를 따라 화면을 넘긴다 */
   following: boolean
   minTrim: number
+  markers: Marker[]
   onSeek: (t: number) => void
   onTrimEnd: (kind: 'in' | 'out', t: number) => void
+  /** 마커를 끌어 놓았을 때 한 번 */
+  onMarkerMove: (id: string, t: number) => void
 }
 
 const HEIGHT = 240
@@ -47,8 +52,11 @@ const COLORS = {
   playhead: '#ffffff',
 }
 
+/** 끌 수 있는 것: 트림 핸들 또는 마커 */
+type DragTarget = { kind: 'in' | 'out' } | { kind: 'marker'; id: string }
+
 type Gesture =
-  | { type: 'handle'; kind: 'in' | 'out' }
+  | { type: 'handle'; target: DragTarget; x0: number; moved: boolean }
   | { type: 'pending' | 'pan'; x0: number; start0: number }
   | { type: 'pinch'; d0: number; pps0: number; anchorT: number }
 
@@ -63,13 +71,14 @@ function rulerLabel(t: number, step: number): string {
 }
 
 export function Waveform(props: Props) {
-  const { peaks, peaksPerSecond, duration, inPoint, outPoint, fadeIn, fadeOut, playhead, following, minTrim } = props
+  const { peaks, peaksPerSecond, duration, inPoint, outPoint, fadeIn, fadeOut, playhead, following, minTrim, markers } =
+    props
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [width, setWidth] = useState(0)
   /** pps 0 = 전체 보기 */
   const [view, setView] = useState({ start: 0, pps: 0 })
-  const [drag, setDrag] = useState<{ kind: 'in' | 'out'; t: number } | null>(null)
+  const [drag, setDrag] = useState<(DragTarget & { t: number }) | null>(null)
   const pointers = useRef(new Map<number, { x: number; y: number }>())
   const gesture = useRef<Gesture | null>(null)
 
@@ -242,6 +251,29 @@ export function Waveform(props: Props) {
     handle(xIn, COLORS.in, 'IN', 1)
     handle(xOut, COLORS.out, 'OUT', -1)
 
+    // 마커: 세로선 + 이름표 (IN/OUT 탭 아래 줄)
+    ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, sans-serif'
+    const shownMarkers = markers
+      .map((m) => ({ m, x: toX(drag?.kind === 'marker' && drag.id === m.id ? drag.t : m.time) }))
+      .sort((a, b) => a.x - b.x)
+    shownMarkers.forEach(({ m, x }, i) => {
+      if (x < -120 || x > width + 4) return
+      const color = markerHex(m.color)
+      ctx.fillStyle = color
+      ctx.fillRect(Math.round(x) - 1, laneTop + 24, 2, laneH - 24)
+      // 이름표는 다음 마커 앞에서 자른다 (가까이 붙은 마커끼리 겹치지 않게)
+      const nextX = shownMarkers[i + 1]?.x ?? Infinity
+      const w = Math.max(8, Math.min(120, ctx.measureText(m.name).width + 10, nextX - x - 2))
+      ctx.fillRect(x, laneTop + 24, w, 18)
+      ctx.fillStyle = '#0b0c10'
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(x, laneTop + 24, w, 18)
+      ctx.clip()
+      ctx.fillText(m.name, x + 5, laneTop + 37)
+      ctx.restore()
+    })
+
     // 재생 위치
     const xp = toX(playhead)
     if (xp >= -2 && xp <= width + 2) {
@@ -262,7 +294,12 @@ export function Waveform(props: Props) {
       ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, sans-serif'
       const w = ctx.measureText(text).width + 12
       const bx = clamp(x - w / 2, 2, width - w - 2)
-      ctx.fillStyle = drag.kind === 'in' ? COLORS.in : COLORS.out
+      ctx.fillStyle =
+        drag.kind === 'marker'
+          ? markerHex(markers.find((m) => m.id === drag.id)?.color)
+          : drag.kind === 'in'
+            ? COLORS.in
+            : COLORS.out
       ctx.fillRect(bx, laneTop + 28, w, 22)
       ctx.fillStyle = '#0b0c10'
       ctx.fillText(text, bx + 6, laneTop + 44)
@@ -289,12 +326,21 @@ export function Waveform(props: Props) {
 
     const x = localX(e)
     const hit = e.pointerType === 'mouse' ? 10 : 28
-    const dIn = Math.abs(x - toX(inPoint))
-    const dOut = Math.abs(x - toX(outPoint))
-    if (Math.min(dIn, dOut) <= hit) {
-      const kind = dIn <= dOut ? 'in' : 'out'
-      gesture.current = { type: 'handle', kind }
-      setDrag({ kind, t: kind === 'in' ? inPoint : outPoint })
+    // 가장 가까운 핸들/마커를 잡는다 (마커 이름표 위를 누르면 그 마커)
+    const candidates: { target: DragTarget; t: number; d: number }[] = [
+      { target: { kind: 'in' }, t: inPoint, d: Math.abs(x - toX(inPoint)) },
+      { target: { kind: 'out' }, t: outPoint, d: Math.abs(x - toX(outPoint)) },
+      ...markers.map((m) => {
+        const mx = toX(m.time)
+        const y = e.clientY - e.currentTarget.getBoundingClientRect().top
+        const onLabel = y >= RULER_H + 24 && y <= RULER_H + 42 && x >= mx && x <= mx + 120
+        return { target: { kind: 'marker' as const, id: m.id }, t: m.time, d: onLabel ? 0 : Math.abs(x - mx) }
+      }),
+    ]
+    const best = candidates.reduce((a, b) => (b.d < a.d ? b : a))
+    if (best.d <= hit) {
+      gesture.current = { type: 'handle', target: best.target, x0: x, moved: false }
+      setDrag({ ...best.target, t: best.t })
     } else {
       gesture.current = { type: 'pending', x0: x, start0: start }
     }
@@ -317,9 +363,13 @@ export function Waveform(props: Props) {
       const p = clamp((g.pps0 * d) / g.d0, l.fitPps, Math.max(l.fitPps, MAX_PPS))
       setView({ start: g.anchorT - midX / p, pps: p <= l.fitPps * 1.001 ? 0 : p })
     } else if (g.type === 'handle') {
+      if (!g.moved && Math.abs(x - g.x0) < 4) return
+      g.moved = true
       const t = toT(x)
-      const v = g.kind === 'in' ? clamp(t, 0, outPoint - minTrim) : clamp(t, inPoint + minTrim, duration)
-      setDrag({ kind: g.kind, t: v })
+      const k = g.target.kind
+      const v =
+        k === 'in' ? clamp(t, 0, outPoint - minTrim) : k === 'out' ? clamp(t, inPoint + minTrim, duration) : clamp(t, 0, duration)
+      setDrag({ ...g.target, t: v })
     } else if (g.type === 'pending') {
       if (Math.abs(x - g.x0) > 6) gesture.current = { ...g, type: 'pan' }
     } else if (g.type === 'pan') {
@@ -339,7 +389,11 @@ export function Waveform(props: Props) {
     gesture.current = null
     if (g?.type === 'handle' && drag) {
       setDrag(null)
-      props.onTrimEnd(drag.kind, drag.t)
+      if (drag.kind === 'marker') {
+        // 끌지 않고 누르기만 했으면 그 마커 위치로 이동
+        if (g.moved) props.onMarkerMove(drag.id, drag.t)
+        else props.onSeek(drag.t)
+      } else if (g.moved) props.onTrimEnd(drag.kind, drag.t)
     } else if (g?.type === 'pending') {
       props.onSeek(clamp(toT(localX(e)), 0, duration))
     }
@@ -370,7 +424,7 @@ export function Waveform(props: Props) {
           전체 보기
         </button>
         <span className="muted small waveform-hint">
-          핸들을 끌어 트림 · 탭하면 이동 · 두 손가락/⌘+휠로 확대
+          IN/OUT·마커를 끌어 조절 · 탭하면 이동 · 두 손가락/⌘+휠로 확대
         </span>
       </div>
       <div ref={wrapRef} className="waveform-canvas-wrap" style={{ height: HEIGHT }}>
