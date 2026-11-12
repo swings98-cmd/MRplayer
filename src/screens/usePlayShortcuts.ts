@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useDialog } from '../store/dialogStore.ts'
 import { usePlayerStore } from '../store/playerStore.ts'
 import { useProjectStore } from '../store/projectStore.ts'
 import { useSettingsStore } from '../store/settingsStore.ts'
@@ -30,6 +31,8 @@ export function usePlayShortcuts(): void {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return
       if (isTyping(e.target)) return
+      // 확인/입력 창이 떠 있으면 단축키를 쓰지 않는다 (스페이스로 GO가 눌리지 않게)
+      if (useDialog.getState().current) return
       const p = usePlayerStore.getState()
 
       switch (e.code) {

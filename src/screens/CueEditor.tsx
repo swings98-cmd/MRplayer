@@ -4,6 +4,7 @@
  * 재생 중인 큐면 playerStore가 엔진에 바로 반영한다.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { askConfirm, useDialog } from '../store/dialogStore.ts'
 import { formatTimeMs } from '../components/format.ts'
 import { TimeInput } from '../components/TimeInput.tsx'
 import { useEngineSnapshot } from '../components/useEngine.ts'
@@ -38,7 +39,7 @@ export function CueEditor({ cue, meta }: Props) {
   const { updateCue, addMarker, updateMarker } = useProjectStore()
   const history = useEditHistory()
   const stacks = history.stacks[cue.id]
-  const { playFrom, previewAround, seek, stop, togglePause, setCursor: setStoreCursor } = usePlayerStore()
+  const { playFrom, previewAround, seekCue, stopCue, resumeCue, setCursor: setStoreCursor } = usePlayerStore()
   const storeCursor = usePlayerStore((s) => s.cursor)
   const snap = useEngineSnapshot()
   // 정지 상태의 위치는 플레이 화면과 같이 쓴다 (마지막으로 멈춘 위치, 파형에서 탭한 위치)
@@ -51,9 +52,12 @@ export function CueEditor({ cue, meta }: Props) {
   const out = cue.outPoint ?? duration
   const trimLength = out - cue.inPoint
 
-  const engineOnThis = snap.state !== 'stopped' && snap.audioId === cue.audioId
-  const playingThis = engineOnThis && (snap.state === 'playing' || snap.state === 'fading')
-  const playhead = engineOnThis ? snap.position : cursor
+  // 이 큐의 재생 (겹쳐 재생 중에는 다른 큐가 함께 나올 수 있으므로 이 큐만 본다)
+  const mine = snap.active.find((a) => a.key === cue.id)
+  const engineOnThis = !!mine
+  const playingThis = mine?.state === 'playing' || mine?.state === 'fading'
+  const pausedThis = mine?.state === 'paused'
+  const playhead = mine ? mine.position : cursor
 
   // 가장 큰 소리(dBFS): 볼륨을 올렸을 때 깨지는지 알려주기 위함
   const peakDb = useMemo(() => {
@@ -92,7 +96,7 @@ export function CueEditor({ cue, meta }: Props) {
   })
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (isTyping(e.target) || e.altKey) return
+      if (isTyping(e.target) || e.altKey || useDialog.getState().current) return
       // M: 지금 위치에 마커 (재생은 끊지 않는다)
       if (e.code === 'KeyM' && !e.metaKey && !e.ctrlKey && !e.repeat) {
         e.preventDefault()
@@ -118,11 +122,11 @@ export function CueEditor({ cue, meta }: Props) {
   const startPoint = () => (cursor >= cue.inPoint && cursor < out - 0.05 ? cursor : cue.inPoint)
 
   const onPlayToggle = () => {
-    if (playingThis) {
-      setCursor(snap.position)
-      stop()
-    } else if (engineOnThis && snap.state === 'paused') {
-      togglePause()
+    if (playingThis && mine) {
+      setCursor(mine.position)
+      stopCue(cue.id)
+    } else if (pausedThis) {
+      resumeCue(cue.id)
     } else {
       playFrom(cue.id, startPoint())
     }
@@ -130,7 +134,7 @@ export function CueEditor({ cue, meta }: Props) {
 
   const onSeek = (t: number) => {
     setCursor(t)
-    if (engineOnThis) seek(t)
+    if (engineOnThis) seekCue(cue.id, t)
   }
 
   const onTrimEnd = (kind: 'in' | 'out', t: number) => {
@@ -139,8 +143,8 @@ export function CueEditor({ cue, meta }: Props) {
     if (previewOnRelease && !playingThis) previewAround(cue.id, t)
   }
 
-  const onReset = () => {
-    if (window.confirm(`"${cue.name}"의 트림, 페이드, 볼륨을 모두 원래대로 되돌릴까요?\n(실행 취소로 다시 돌아올 수 있습니다)`)) {
+  const onReset = async () => {
+    if (await askConfirm(`"${cue.name}"의 트림, 페이드, 볼륨을 모두 원래대로 되돌릴까요?\n(실행 취소로 다시 돌아올 수 있습니다)`, { confirmLabel: '초기화', danger: true })) {
       apply(ORIGINAL_VALUES, { step: true })
     }
   }
@@ -181,7 +185,7 @@ export function CueEditor({ cue, meta }: Props) {
 
         <div className="editor-transport">
           <button className={`btn ${playingThis ? 'btn-danger' : 'btn-primary'}`} onClick={onPlayToggle}>
-            {playingThis ? '정지' : engineOnThis && snap.state === 'paused' ? '이어 재생' : '재생'}
+            {playingThis ? '정지' : pausedThis ? '이어 재생' : '재생'}
           </button>
           <button className="btn" onClick={() => playFrom(cue.id, cue.inPoint)}>
             처음부터

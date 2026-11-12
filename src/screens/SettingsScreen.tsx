@@ -32,6 +32,11 @@ const PERSIST_TEXT: Record<PersistStatus, string> = {
 const GO_MODES: { id: GoMode; label: string; desc: string }[] = [
   { id: 'cut', label: '즉시 끊고 재생', desc: '재생 중인 큐를 바로 멈추고 다음 큐를 재생' },
   { id: 'fade', label: '페이드 아웃하며 재생', desc: '재생 중인 큐를 페이드 아웃 시간 동안 줄이면서 다음 큐를 재생' },
+  {
+    id: 'layer',
+    label: '겹쳐 재생 (QLab 방식)',
+    desc: '재생 중인 큐를 멈추지 않고 다음 큐를 함께 재생. 앞 큐는 목록의 ■/↘ 버튼이나 정지·페이드 아웃으로 멈춤',
+  },
 ]
 
 const FADE_CHOICES = [1, 2, 3, 5, 8, 10]

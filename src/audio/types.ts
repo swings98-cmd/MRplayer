@@ -26,12 +26,30 @@ export interface CueSettings {
   volumeDb: number
 }
 
-export interface EngineSnapshot {
-  state: PlaybackState
-  /** 현재 위치(초, 파일 처음 기준). 정지 상태면 0 */
+/** 동시에 재생 중인 큐 하나 (겹쳐 재생) */
+export interface ActivePlayback {
+  /** 재생을 구분하는 이름 (보통 큐 id) */
+  key: string
+  audioId: string
+  state: Exclude<PlaybackState, 'stopped'>
+  /** 현재 위치(초, 파일 기준) */
   position: number
-  /** 재생/일시정지 중인 음원 id */
+}
+
+export interface EngineSnapshot {
+  /**
+   * 전체 상태: 하나라도 재생 중이면 playing, 아니면 페이드 중이면 fading,
+   * 아니면 일시정지가 있으면 paused, 아무것도 없으면 stopped
+   */
+  state: PlaybackState
+  /** 가장 최근에 시작한 재생(주 재생)의 위치(초, 파일 처음 기준). 정지 상태면 0 */
+  position: number
+  /** 주 재생의 음원 id */
   audioId: string | null
+  /** 주 재생의 key */
+  primaryKey: string | null
+  /** 동시에 재생/페이드/일시정지 중인 모든 재생 (시작한 순서) */
+  active: ActivePlayback[]
   contextState: ContextState
   outputMode: OutputMode
   /** AudioContext를 아직 만들지 않았으면 null */

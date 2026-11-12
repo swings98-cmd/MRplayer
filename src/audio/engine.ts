@@ -5,7 +5,10 @@
  *
  * 규칙
  * - AudioContext는 앱 전체에 하나. 사용자 탭에서 생성/재개한다.
- * - 동시에 "현재 재생"은 하나. 새로 재생하면 이전 재생은 짧게 줄인 뒤 정지한다.
+ * - 재생은 key(보통 큐 id)별로 관리한다. 같은 key를 다시 재생하면 그 재생만 새로 시작한다.
+ *   - 기본: 새로 재생하면 다른 재생은 짧게(또는 fadePreviousSeconds 동안) 줄인 뒤 정지 (재생은 하나)
+ *   - layer: 다른 재생을 그대로 두고 겹쳐 재생 (QLab 방식)
+ * - 정지/페이드/일시정지/이어 재생/위치 이동은 key를 주면 그 재생에만, 안 주면 전체(위치 이동은 주 재생)에 적용한다.
  * - 볼륨 변화는 모두 AudioParam 예약으로 처리한다. 타이머로 볼륨을 바꾸지 않는다.
  * - 위치는 AudioContext.currentTime 기준으로 계산한다.
  */
@@ -41,15 +44,10 @@ export class AudioEngine {
   private readonly buffers = new Map<string, AudioBuffer>()
   private readonly loading = new Map<string, Promise<AudioBuffer>>()
 
-  /** 지금 재생/페이드 중인 Voice */
-  private current: Voice | null = null
+  /** key별 재생 (재생 중/페이드 중/일시정지). Map 순서 = 시작한 순서 */
+  private readonly playbacks = new Map<string, Playback>()
   /** 정지 페이드 중인 것까지 포함한 살아 있는 모든 Voice */
   private readonly voices = new Set<Voice>()
-  private state: PlaybackState = 'stopped'
-  private currentCue: CueSettings | null = null
-  /** 지금 재생이 큐 페이드 인을 무시하는 재생(마커 재생)인지. 이어 재생/위치 이동/설정 변경 때도 유지한다 */
-  private ignoreFadeIn = false
-  private paused: { cue: CueSettings; position: number; ignoreFadeIn: boolean } | null = null
 
   private readonly listeners = new Set<EngineListener>()
   private snapshot: EngineSnapshot
@@ -200,13 +198,9 @@ export class AudioEngine {
     return this.buffers.get(audioId)?.duration ?? null
   }
 
-  /** 캐시 해제. 이 음원을 재생/일시정지 중이면 정지한다. */
+  /** 캐시 해제. 이 음원을 재생/일시정지 중인 재생은 정지한다. */
   unload(audioId: string): void {
-    if (this.current?.audioId === audioId) this.stop()
-    if (this.paused?.cue.audioId === audioId) {
-      this.paused = null
-      this.setState('stopped')
-    }
+    for (const pb of [...this.playbacks.values()]) if (pb.cue.audioId === audioId) this.stop(pb.key)
     this.loading.delete(audioId)
     this.buffers.delete(audioId)
   }
@@ -215,9 +209,10 @@ export class AudioEngine {
 
   /**
    * 재생. 인 포인트(또는 startAt)에서 시작해 아웃 포인트에서 자동 종료.
-   * 재생 중이면 이전 재생은 짧은 페이드(10ms) 후 정지하고 새로 시작한다.
    * @param startAt 파일 위치(초). 주면 그 지점부터 재생 (마커 점프용). 인/아웃 범위로 맞춘다.
-   * @param options.fadePreviousSeconds 이전 재생을 이 시간 동안 페이드 아웃하며 새로 재생 (기본 10ms)
+   * @param options.key 재생 이름 (기본: 음원 id). 같은 key가 재생 중이면 그 재생만 새로 시작한다
+   * @param options.layer true면 다른 재생을 그대로 두고 겹쳐 재생 (QLab 방식)
+   * @param options.fadePreviousSeconds 겹치지 않을 때 다른 재생을 이 시간 동안 페이드 아웃 (기본 10ms)
    * @param options.ignoreFadeIn 큐의 페이드 인 설정을 쓰지 않는다 (마커 재생). 페이드 아웃과 아웃 포인트는 그대로.
    * @param options.startFade 시작할 때 0에서 올라오는 시간(초). 기본 10ms
    */
@@ -230,65 +225,86 @@ export class AudioEngine {
     const ignoreFadeIn = options?.ignoreFadeIn ?? false
     const range = cueRange(cue, buffer.duration, ignoreFadeIn)
     if (range.outPoint - range.inPoint < MIN_LENGTH) throw new Error('인/아웃 포인트 사이가 너무 짧습니다')
-
     const from = clamp(startAt ?? range.inPoint, range.inPoint, range.outPoint - MIN_LENGTH)
+    const key = options?.key ?? cue.audioId
 
-    this.releaseCurrent(Math.max(DECLICK, options?.fadePreviousSeconds ?? DECLICK))
-    this.paused = null
+    // 같은 key는 그 재생만 새로 시작 (같은 곡이 두 겹으로 나오지 않게)
+    const same = this.playbacks.get(key)
+    if (same) {
+      same.voice?.release(DECLICK)
+      this.playbacks.delete(key)
+    }
+    if (!options?.layer) {
+      const fade = Math.max(DECLICK, options?.fadePreviousSeconds ?? DECLICK)
+      if (fade > DECLICK) {
+        // 길게 페이드되는 이전 소리는 하나만 둔다 (GO 연타로 여러 소리가 겹쳐 커지는 것 방지)
+        for (const v of this.voices) if (v.isReleasing) v.release(DECLICK)
+      }
+      for (const pb of this.playbacks.values()) pb.voice?.release(fade)
+      this.playbacks.clear()
+    }
 
     const voice = new Voice(ctx, this.master!, buffer, cue.audioId, range, from, options?.startFade)
     voice.onEnded = (v) => this.handleVoiceEnded(v)
     this.voices.add(voice)
-    this.current = voice
-    this.currentCue = cue
-    this.ignoreFadeIn = ignoreFadeIn
-    this.setState('playing')
+    this.playbacks.set(key, { key, cue, voice, state: 'playing', ignoreFadeIn, pausedAt: 0 })
+    this.changed()
   }
 
-  /** 클릭 소리가 나지 않게 10ms 페이드 후 정지 */
-  stop(): void {
-    this.releaseCurrent(DECLICK)
-    this.paused = null
-    this.currentCue = null
-    this.setState('stopped')
+  /** 클릭 소리가 나지 않게 10ms 페이드 후 정지. key가 없으면 전체 */
+  stop(key?: string): void {
+    for (const pb of this.targets(key)) {
+      pb.voice?.release(DECLICK)
+      this.playbacks.delete(pb.key)
+    }
+    this.changed()
   }
 
-  /** seconds 동안 페이드 아웃 후 정지. 끝나면 state가 stopped가 된다. */
-  fadeOutAndStop(seconds: number): void {
-    if (!this.current) return
+  /** seconds 동안 페이드 아웃 후 정지. key가 없으면 전체. 일시정지 중인 재생은 바로 정지 */
+  fadeOutAndStop(seconds: number, key?: string): void {
     if (!(seconds > DECLICK)) {
-      this.stop()
+      this.stop(key)
       return
     }
-    this.current.release(seconds)
-    this.setState('fading')
+    for (const pb of this.targets(key)) {
+      if (pb.voice) {
+        pb.voice.release(seconds)
+        pb.state = 'fading'
+      } else this.playbacks.delete(pb.key)
+    }
+    this.changed()
   }
 
-  /** 위치를 기억하고 정지. 페이드 아웃 중이면 stop()과 같다. */
-  pause(): void {
-    if (this.state === 'fading') {
-      this.stop()
-      return
+  /** 재생 중인 것의 위치를 기억하고 멈춘다. 페이드 아웃 중인 것은 정지. key가 없으면 전체 */
+  pause(key?: string): void {
+    if (!this.ctx) return
+    for (const pb of this.targets(key)) {
+      if (pb.state === 'fading') {
+        pb.voice?.release(DECLICK)
+        this.playbacks.delete(pb.key)
+      } else if (pb.state === 'playing' && pb.voice) {
+        pb.pausedAt = pb.voice.position(this.ctx.currentTime)
+        pb.voice.release(DECLICK)
+        pb.voice = null
+        pb.state = 'paused'
+      }
     }
-    if (this.state !== 'playing' || !this.current || !this.currentCue || !this.ctx) return
-    const position = this.current.position(this.ctx.currentTime)
-    const cue = this.currentCue
-    this.releaseCurrent(DECLICK)
-    this.paused = { cue, position, ignoreFadeIn: this.ignoreFadeIn }
-    this.setState('paused')
+    this.changed()
   }
 
-  /** 일시정지한 위치부터 이어서 재생 */
-  resume(): void {
-    if (this.state !== 'paused' || !this.paused) return
-    const { cue, position, ignoreFadeIn } = this.paused
-    const duration = this.getDuration(cue.audioId)
-    const out = duration === null ? 0 : cueRange(cue, duration).outPoint
-    if (position >= out - MIN_LENGTH) {
-      this.stop()
-      return
+  /** 일시정지한 위치부터 이어서 재생. key가 없으면 일시정지한 것 전체 */
+  resume(key?: string): void {
+    for (const pb of this.targets(key)) {
+      if (pb.state !== 'paused') continue
+      const duration = this.getDuration(pb.cue.audioId)
+      const out = duration === null ? 0 : cueRange(pb.cue, duration).outPoint
+      if (duration === null || pb.pausedAt >= out - MIN_LENGTH) {
+        this.playbacks.delete(pb.key)
+        continue
+      }
+      this.restart(pb, pb.pausedAt)
     }
-    this.play(cue, position, { ignoreFadeIn })
+    this.changed()
   }
 
   /**
@@ -296,67 +312,67 @@ export class AudioEngine {
    * - 페이드/볼륨만 바뀌면: 재생을 끊지 않고 볼륨 곡선만 다시 예약
    * - 인/아웃 포인트가 바뀌면: 지금 위치(새 범위 안으로 맞춤)에서 다시 재생
    * - 지금 위치가 새 아웃 포인트를 지났으면: 정지
-   * 다른 음원을 재생 중이면 무시한다.
+   * @param key 이 재생에만 (없으면 같은 음원을 쓰는 재생 전체)
    */
-  applyCueSettings(cue: CueSettings): void {
+  applyCueSettings(cue: CueSettings, key?: string): void {
     const buffer = this.buffers.get(cue.audioId)
-    if (!buffer) return
-    if (this.state === 'paused' && this.paused?.cue.audioId === cue.audioId) {
-      const next = cueRange(cue, buffer.duration)
-      if (next.outPoint - next.inPoint < MIN_LENGTH) return
-      const position = clamp(this.paused.position, next.inPoint, next.outPoint - MIN_LENGTH)
-      this.paused = { ...this.paused, cue, position }
-      this.emit()
-      return
+    if (!buffer || !this.ctx) return
+    const list = key ? this.targets(key) : [...this.playbacks.values()].filter((pb) => pb.cue.audioId === cue.audioId)
+    for (const pb of list) {
+      if (pb.cue.audioId !== cue.audioId) continue
+      const next = cueRange(cue, buffer.duration, pb.ignoreFadeIn)
+      if (next.outPoint - next.inPoint < MIN_LENGTH) continue
+      const prev = cueRange(pb.cue, buffer.duration, pb.ignoreFadeIn)
+      pb.cue = cue
+      if (pb.state === 'paused') {
+        pb.pausedAt = clamp(pb.pausedAt, next.inPoint, next.outPoint - MIN_LENGTH)
+        continue
+      }
+      if (pb.state === 'fading' || !pb.voice) continue // 정지하려고 줄어드는 중이면 그대로 둔다
+      if (prev.inPoint === next.inPoint && prev.outPoint === next.outPoint) {
+        pb.voice.reschedule(next)
+        continue
+      }
+      const pos = pb.voice.position(this.ctx.currentTime)
+      if (pos >= next.outPoint - 0.05) {
+        pb.voice.release(DECLICK)
+        this.playbacks.delete(pb.key)
+        continue
+      }
+      this.restart(pb, Math.max(pos, next.inPoint))
     }
-    if (!this.current || !this.currentCue || !this.ctx || this.currentCue.audioId !== cue.audioId) return
-
-    const next = cueRange(cue, buffer.duration, this.ignoreFadeIn)
-    if (next.outPoint - next.inPoint < MIN_LENGTH) return
-    const prev = cueRange(this.currentCue, buffer.duration, this.ignoreFadeIn)
-    this.currentCue = cue
-    if (this.state === 'fading') return // 정지하려고 줄어드는 중이면 그대로 둔다
-
-    if (prev.inPoint === next.inPoint && prev.outPoint === next.outPoint) {
-      this.current.reschedule(next)
-      return
-    }
-    const pos = this.current.position(this.ctx.currentTime)
-    if (pos >= next.outPoint - 0.05) {
-      this.stop()
-      return
-    }
-    this.play(cue, Math.max(pos, next.inPoint), { ignoreFadeIn: this.ignoreFadeIn })
+    this.changed()
   }
 
   /**
    * 위치 이동(초, 파일 기준). 재생 중이면 그 지점부터 다시 재생하고,
-   * 일시정지 중이면 이어 재생할 위치만 바꾼다. 정지 상태와 페이드 아웃 중이면 무시
-   * (페이드 아웃 중에 옮기면 원래 볼륨으로 다시 나와 페이드가 풀리므로).
+   * 일시정지 중이면 이어 재생할 위치만 바꾼다. 페이드 아웃 중이면 무시
+   * (옮기면 원래 볼륨으로 다시 나와 페이드가 풀리므로).
+   * @param key 이 재생 (없으면 주 재생 = 가장 최근에 시작한 것)
    */
-  seek(position: number): void {
-    if (this.state === 'paused' && this.paused) {
-      const duration = this.getDuration(this.paused.cue.audioId)
-      if (duration === null) return
-      const r = cueRange(this.paused.cue, duration)
-      this.paused = { ...this.paused, position: clamp(position, r.inPoint, r.outPoint - MIN_LENGTH) }
-      this.emit()
-      return
-    }
-    if (this.state === 'playing' && this.currentCue) {
-      this.play(this.currentCue, position, { ignoreFadeIn: this.ignoreFadeIn })
-    }
+  seek(position: number, key?: string): void {
+    const pb = key ? this.playbacks.get(key) : this.primary()
+    if (!pb) return
+    const duration = this.getDuration(pb.cue.audioId)
+    if (duration === null) return
+    const r = cueRange(pb.cue, duration)
+    if (pb.state === 'paused') pb.pausedAt = clamp(position, r.inPoint, r.outPoint - MIN_LENGTH)
+    else if (pb.state === 'playing') this.restart(pb, position)
+    this.changed()
   }
 
   /** 모든 소리를 즉시 정지 (페이드 없음) */
   panic(): void {
     const all = [...this.voices]
-    this.current = null
-    this.paused = null
-    this.currentCue = null
+    this.playbacks.clear()
     for (const v of all) v.kill()
     this.voices.clear()
-    this.setState('stopped')
+    this.changed()
+  }
+
+  /** 지금 재생/페이드/일시정지 중인 재생이 있는지 */
+  get isActive(): boolean {
+    return this.playbacks.size > 0
   }
 
   // ───────────────────────── 마스터 볼륨 ─────────────────────────
@@ -380,10 +396,11 @@ export class AudioEngine {
   /** 마지막으로 알린 상태 (React useSyncExternalStore용, 구독 중일 때 프레임마다 갱신) */
   getSnapshot = (): EngineSnapshot => this.snapshot
 
-  /** 지금 이 순간의 위치(초). 구독 없이 바로 읽을 때 사용 */
-  getPosition(): number {
-    if (this.current && this.ctx) return this.current.position(this.ctx.currentTime)
-    return this.paused?.position ?? 0
+  /** 지금 이 순간의 위치(초). key가 없으면 주 재생. 구독 없이 바로 읽을 때 사용 */
+  getPosition(key?: string): number {
+    const pb = key ? this.playbacks.get(key) : this.primary()
+    if (!pb) return 0
+    return pb.voice && this.ctx ? pb.voice.position(this.ctx.currentTime) : pb.pausedAt
   }
 
   /** 상태가 바뀔 때, 그리고 재생/페이드 중에는 화면 프레임마다 호출된다 */
@@ -421,28 +438,59 @@ export class AudioEngine {
 
   // ───────────────────────── 내부 ─────────────────────────
 
-  private releaseCurrent(seconds: number): void {
-    const v = this.current
-    this.current = null
-    if (seconds > DECLICK) {
-      // 길게 페이드되는 이전 소리는 하나만 둔다 (GO 연타로 여러 소리가 겹쳐 커지는 것 방지)
-      for (const other of this.voices) if (other !== v && other.isReleasing) other.release(DECLICK)
-    }
-    v?.release(seconds)
+  /** key가 있으면 그 재생, 없으면 전체 */
+  private targets(key?: string): Playback[] {
+    if (key === undefined) return [...this.playbacks.values()]
+    const pb = this.playbacks.get(key)
+    return pb ? [pb] : []
+  }
+
+  /** 주 재생 = 가장 최근에 시작한 것 */
+  private primary(): Playback | undefined {
+    let last: Playback | undefined
+    for (const pb of this.playbacks.values()) last = pb
+    return last
+  }
+
+  /** 같은 재생을 다른 위치에서 다시 시작 (마커 재생이면 그 방식 유지). 다른 재생은 건드리지 않는다 */
+  private restart(pb: Playback, position: number): void {
+    const buffer = this.buffers.get(pb.cue.audioId)
+    if (!buffer || !this.ctx || !this.master) return
+    const range = cueRange(pb.cue, buffer.duration, pb.ignoreFadeIn)
+    const from = clamp(position, range.inPoint, range.outPoint - MIN_LENGTH)
+    pb.voice?.release(DECLICK)
+    const voice = new Voice(this.ctx, this.master, buffer, pb.cue.audioId, range, from)
+    voice.onEnded = (v) => this.handleVoiceEnded(v)
+    this.voices.add(voice)
+    pb.voice = voice
+    pb.state = 'playing'
   }
 
   private handleVoiceEnded(v: Voice): void {
     this.voices.delete(v)
-    if (v === this.current) {
-      // 아웃 포인트 도달 또는 페이드 아웃 완료
-      this.current = null
-      this.currentCue = null
-      this.setState('stopped')
+    // 아웃 포인트 도달 또는 페이드 아웃 완료: 그 Voice를 쓰던 재생을 끝낸다
+    for (const pb of this.playbacks.values()) {
+      if (pb.voice === v) {
+        this.playbacks.delete(pb.key)
+        this.changed()
+        break
+      }
     }
   }
 
-  private setState(s: PlaybackState): void {
-    this.state = s
+  /** 전체 상태 */
+  private get state(): PlaybackState {
+    let fading = false
+    let paused = false
+    for (const pb of this.playbacks.values()) {
+      if (pb.state === 'playing') return 'playing'
+      if (pb.state === 'fading') fading = true
+      if (pb.state === 'paused') paused = true
+    }
+    return fading ? 'fading' : paused ? 'paused' : 'stopped'
+  }
+
+  private changed(): void {
     this.emit()
     this.updateTicker()
   }
@@ -451,19 +499,19 @@ export class AudioEngine {
     const healthy = !!this.ctx && this.ctx.state === 'running' && !(this.output?.isPaused() ?? false)
     if (healthy) this.everRunning = true
     const now = this.ctx?.currentTime ?? 0
-    let position = 0
-    let audioId: string | null = null
-    if (this.current) {
-      position = this.current.position(now)
-      audioId = this.current.audioId
-    } else if (this.paused) {
-      position = this.paused.position
-      audioId = this.paused.cue.audioId
-    }
+    const active = [...this.playbacks.values()].map((pb) => ({
+      key: pb.key,
+      audioId: pb.cue.audioId,
+      state: pb.state,
+      position: pb.voice ? pb.voice.position(now) : pb.pausedAt,
+    }))
+    const primary = active[active.length - 1]
     return {
       state: this.state,
-      position,
-      audioId,
+      position: primary?.position ?? 0,
+      audioId: primary?.audioId ?? null,
+      primaryKey: primary?.key ?? null,
+      active,
       contextState: (this.ctx?.state ?? 'none') as ContextState,
       outputMode: this.outputMode,
       outputKind: this.output?.kind ?? null,
@@ -478,7 +526,8 @@ export class AudioEngine {
 
   /** 재생/페이드 중이고 구독자가 있을 때만 프레임마다 위치를 알린다 (화면 표시용, 소리와 무관) */
   private updateTicker(): void {
-    const active = (this.state === 'playing' || this.state === 'fading') && this.listeners.size > 0
+    const st = this.state
+    const active = (st === 'playing' || st === 'fading') && this.listeners.size > 0
     if (active && this.tickHandle === null) {
       const tick = () => {
         this.emit()
@@ -496,10 +545,23 @@ function clamp(x: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, x))
 }
 
-/** 큐 설정을 파일 길이에 맞게 정리 */
+/** key별 재생 하나 */
+interface Playback {
+  key: string
+  cue: CueSettings
+  /** 재생/페이드 중인 소리. 일시정지면 null */
+  voice: Voice | null
+  state: 'playing' | 'fading' | 'paused'
+  /** 마커 재생처럼 큐 페이드 인을 무시하는 재생인지 (이어 재생/위치 이동/설정 변경 때도 유지) */
+  ignoreFadeIn: boolean
+  /** 일시정지한 위치(초) */
+  pausedAt: number
+}
+
 export interface PlayOptions {
+  key?: string
+  layer?: boolean
   fadePreviousSeconds?: number
   ignoreFadeIn?: boolean
   startFade?: number
 }
-

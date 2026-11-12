@@ -1,5 +1,6 @@
 /** "음원 없음"인 큐에 파일을 다시 지정하는 버튼 (설정만 가져온 프로젝트) */
 import { useRef, useState } from 'react'
+import { showAlert } from '../store/dialogStore.ts'
 import { useEngineState } from './useEngine.ts'
 import { AUDIO_ACCEPT, useProjectStore } from '../store/projectStore.ts'
 import { useStorageStore } from '../store/storageStore.ts'
@@ -41,9 +42,9 @@ export function RelinkButton({ cueId, className = 'btn btn-primary', label = '�
           try {
             const { linked, warning } = await relinkAudio(cueId, file)
             void refreshEstimate()
-            window.alert(`"${file.name}"을(를) 큐 ${linked}개에 연결했습니다.${warning ? `\n\n⚠️ ${warning}` : ''}`)
+            void showAlert(`"${file.name}"을(를) 큐 ${linked}개에 연결했습니다.${warning ? `\n\n⚠️ ${warning}` : ''}`)
           } catch (err) {
-            window.alert(`음원을 지정하지 못했습니다: ${err instanceof Error ? err.message : String(err)}`)
+            void showAlert(`음원을 지정하지 못했습니다: ${err instanceof Error ? err.message : String(err)}`)
           } finally {
             setBusy(false)
           }

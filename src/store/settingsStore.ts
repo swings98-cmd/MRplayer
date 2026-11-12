@@ -7,8 +7,11 @@ import { audioEngine, type OutputMode } from '../audio/index.ts'
 import { describeSaveError, reportError } from './appErrors.ts'
 import * as db from './db.ts'
 
-/** GO를 눌렀을 때 이미 재생 중인 큐 처리 */
-export type GoMode = 'cut' | 'fade'
+/**
+ * GO를 눌렀을 때 이미 재생 중인 큐 처리
+ * - cut: 즉시 끊고 재생, fade: 페이드 아웃하며 재생, layer: 그대로 두고 겹쳐 재생 (QLab 방식)
+ */
+export type GoMode = 'cut' | 'fade' | 'layer'
 
 export interface AppSettings {
   goMode: GoMode

@@ -38,8 +38,10 @@ export interface StartPoint {
 interface PlayerState {
   /** 다음에 GO 하면 나올 큐. 목록 끝까지 갔으면 null */
   standbyCueId: string | null
-  /** 재생/페이드/일시정지 중인 큐 */
+  /** 재생/페이드/일시정지 중인 큐 중 가장 최근에 시작한 것 (화면의 재생 정보, 진행 막대 대상) */
   playingCueId: string | null
+  /** 동시에 재생/페이드/일시정지 중인 모든 큐 (겹쳐 재생) */
+  activeCues: Record<string, 'playing' | 'fading' | 'paused'>
   /** 미리 디코딩이 끝난 음원 id */
   readyAudioIds: Record<string, true>
   /** GO를 눌렀는데 아직 디코딩 중인 큐 */
@@ -82,6 +84,14 @@ interface PlayerState {
   panic(): void
   seek(position: number): void
   clearError(): void
+  /** 큐 하나만 정지 (겹쳐 재생 중 앞 곡 멈추기) */
+  stopCue(cueId: string): void
+  /** 일시정지한 큐 하나만 이어 재생 */
+  resumeCue(cueId: string): void
+  /** 큐 하나의 위치 이동 (편집 화면) */
+  seekCue(cueId: string, position: number): void
+  /** 큐 하나만 페이드 아웃 후 정지 */
+  fadeOutCue(cueId: string): void
   /** 공연 전 점검 결과로 음원 상태를 기록 (null이면 정상) */
   setAudioHealth(audioId: string, error: string | null): void
 }
@@ -112,9 +122,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     const { standbyCueId, playingCueId, selectedCueId, failedAudio } = get()
     const si = indexOf(standbyCueId)
     const audioOf = (id: string | null | undefined) => list.find((c) => c.id === id)?.audioId
-    const engineAudio = audioEngine.getSnapshot().audioId
-    // 우선순위: 재생/일시정지 중 → 대기 큐 → 그다음 큐 → 편집 대상
-    const order = [engineAudio, audioOf(playingCueId), audioOf(standbyCueId), list[si + 1]?.audioId, audioOf(selectedCueId)]
+    // 재생/페이드/일시정지 중인 음원 (겹쳐 재생이면 여러 개)
+    const activeAudio = [...new Set(audioEngine.getSnapshot().active.map((a) => a.audioId))]
+    // 우선순위: 재생 중 → 대기 큐 → 그다음 큐 → 편집 대상
+    const order = [...activeAudio.reverse(), audioOf(playingCueId), audioOf(standbyCueId), list[si + 1]?.audioId, audioOf(selectedCueId)]
       .filter((id): id is string => !!id && !failedAudio[id])
 
     const mem = audioEngine.memoryInUse()
@@ -124,6 +135,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       order.map((id) => ({ audioId: id, bytes: mem.byId[id] ?? decodedBytes(metas[id]?.duration ?? 0, sr) })),
       defaultBudget(),
       mem.voicesOnly,
+      // 재생 중인 것과 대기 큐는 예산을 넘어도 둔다
+      activeAudio.length + 1,
     )
     const keepSet = new Set(keep)
 
@@ -131,7 +144,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     let changed = false
     const ready = { ...get().readyAudioIds }
     for (const id of audioEngine.loadedIds()) {
-      if (!keepSet.has(id) && id !== engineAudio) {
+      if (!keepSet.has(id) && !activeAudio.includes(id)) {
         audioEngine.unload(id)
         delete ready[id]
         changed = true
@@ -214,8 +227,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     set({ lastStart: point })
     whenReady(cue, () => {
       try {
-        audioEngine.play(cue, point.position, point.options)
-        set({ playingCueId: cue.id, error: null })
+        audioEngine.play(cue, point.position, { ...point.options, ...playMode(), key: cue.id })
+        set({ error: null })
         afterStart?.()
       } catch (err) {
         set({ error: `"${cue.name}" 재생 실패: ${err instanceof Error ? err.message : String(err)}` })
@@ -227,13 +240,19 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     return cues()[index + 1]?.id ?? null
   }
 
-  function playCue(cue: Cue): void {
+  /** GO 방식에 따른 재생 옵션: 겹쳐 재생 / 페이드 아웃하며 / 즉시 끊기 */
+  function playMode(): { layer?: boolean; fadePreviousSeconds?: number } {
     const s = useSettingsStore.getState()
+    if (s.goMode === 'layer') return { layer: true }
     const active = audioEngine.getSnapshot().state
-    const fadePrevious = s.goMode === 'fade' && (active === 'playing' || active === 'fading')
+    if (s.goMode === 'fade' && (active === 'playing' || active === 'fading')) return { fadePreviousSeconds: s.fadeOutSeconds }
+    return {}
+  }
+
+  function playCue(cue: Cue): void {
     try {
-      audioEngine.play(cue, undefined, fadePrevious ? { fadePreviousSeconds: s.fadeOutSeconds } : undefined)
-      set({ playingCueId: cue.id, error: null })
+      audioEngine.play(cue, undefined, { ...playMode(), key: cue.id })
+      set({ error: null })
     } catch (err) {
       set({ error: `"${cue.name}" 재생 실패: ${err instanceof Error ? err.message : String(err)}` })
     }
@@ -242,6 +261,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   return {
     standbyCueId: null,
     playingCueId: null,
+    activeCues: {},
     readyAudioIds: {},
     waitingCueId: null,
     selectedCueId: null,
@@ -277,8 +297,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     positionOf(cueId) {
       const cue = cues().find((c) => c.id === cueId)
       if (!cue) return 0
-      const snap = audioEngine.getSnapshot()
-      if (snap.state !== 'stopped' && get().playingCueId === cueId) return audioEngine.getPosition()
+      if (get().activeCues[cueId]) return audioEngine.getPosition(cueId)
       const c = get().cursor
       return c && c.cueId === cueId ? c.time : cue.inPoint
     },
@@ -312,12 +331,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     playAdjacentMarker(cueId, dir) {
       const cue = cues().find((c) => c.id === cueId)
       if (!cue || cue.markers.length === 0) return
-      const playing = audioEngine.getSnapshot().state !== 'stopped' && get().playingCueId === cueId
+      const playing = get().activeCues[cueId] === 'playing'
       const last = get().lastStart
       // 기준 위치: 재생 중이면 지금 위치, 아니면 마지막으로 시작한 마커(없으면 커서)
       const lastMarker = last?.cueId === cueId ? cue.markers.find((m) => m.id === last.markerId) : undefined
       // 기준 위치: 재생 중이면 지금 위치(프리롤 구간이면 시작한 마커), 아니면 마지막으로 시작한 마커(없으면 커서)
-      let ref = playing ? audioEngine.getPosition() : (lastMarker?.time ?? get().positionOf(cueId))
+      let ref = playing ? audioEngine.getPosition(cueId) : (lastMarker?.time ?? get().positionOf(cueId))
       if (playing && lastMarker && ref < lastMarker.time) ref = lastMarker.time
       const sorted = cue.markers
       let target: Marker | undefined
@@ -341,6 +360,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     addMarkerHere() {
       const snap = audioEngine.getSnapshot()
       const { playingCueId, selectedCueId } = get()
+      // 재생 중이면 가장 최근에 시작한 큐에 찍는다
       const cueId = snap.state !== 'stopped' && playingCueId ? playingCueId : selectedCueId
       if (!cueId) return null
       return useProjectStore.getState().addMarker(cueId, get().positionOf(cueId))
@@ -351,16 +371,19 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       const duration = cue && audioEngine.getDuration(cue.audioId)
       if (!cue || !duration) return
       try {
-        audioEngine.play({
+        audioEngine.play(
+          {
           audioId: cue.audioId,
           inPoint: Math.max(0, center - 1.5),
           outPoint: Math.min(duration, center + 1.5),
           fadeIn: 0.02,
           fadeOut: 0.15,
           volumeDb: cue.volumeDb,
-        })
-        // 큐 그대로의 재생이 아니므로 재생 중인 큐로 표시하지 않는다
-        set({ playingCueId: null })
+          },
+          undefined,
+          // 큐 그대로의 재생이 아니므로 큐 id가 아닌 이름으로 (재생 중인 큐로 표시하지 않음)
+          { key: PREVIEW_KEY },
+        )
       } catch {
         /* 너무 짧은 구간 등은 무시 */
       }
@@ -423,7 +446,25 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     },
 
     seek(position) {
-      audioEngine.seek(position)
+      const id = get().playingCueId
+      if (id) audioEngine.seek(position, id)
+    },
+
+    stopCue(cueId) {
+      audioEngine.stop(cueId)
+    },
+
+    resumeCue(cueId) {
+      cancelPending()
+      audioEngine.resume(cueId)
+    },
+
+    seekCue(cueId, position) {
+      audioEngine.seek(position, cueId)
+    },
+
+    fadeOutCue(cueId) {
+      audioEngine.fadeOutAndStop(useSettingsStore.getState().fadeOutSeconds, cueId)
     },
 
     clearError() {
@@ -439,16 +480,28 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   }
 })
 
-// 엔진이 정지 상태가 되면 재생 중 큐 표시를 지우고, 멈춘 위치를 커서로 남긴다
+/** 트림 미리듣기처럼 큐가 아닌 재생의 이름 */
+const PREVIEW_KEY = '__preview__'
+
+// 엔진 상태로 재생 중인 큐 표시를 맞추고, 모두 멈추면 마지막 위치를 커서로 남긴다
 let lastActive: { cueId: string; time: number } | null = null
 audioEngine.subscribe((snap) => {
-  const { playingCueId } = usePlayerStore.getState()
-  if (snap.state !== 'stopped') {
-    if (playingCueId) lastActive = { cueId: playingCueId, time: snap.position }
+  const cueActive = snap.active.filter((a) => a.key !== PREVIEW_KEY)
+  const primary = cueActive[cueActive.length - 1]
+  const activeCues: Record<string, 'playing' | 'fading' | 'paused'> = {}
+  for (const a of cueActive) activeCues[a.key] = a.state
+  const prev = usePlayerStore.getState()
+  const playingCueId = primary?.key ?? null
+  const changed =
+    prev.playingCueId !== playingCueId ||
+    Object.keys(prev.activeCues).length !== cueActive.length ||
+    cueActive.some((a) => prev.activeCues[a.key] !== a.state)
+  if (changed) usePlayerStore.setState({ playingCueId, activeCues })
+  if (primary) {
+    lastActive = { cueId: primary.key, time: primary.position }
     return
   }
-  if (playingCueId) usePlayerStore.setState({ playingCueId: null })
-  if (lastActive) {
+  if (snap.state === 'stopped' && lastActive) {
     usePlayerStore.setState({ cursor: lastActive })
     lastActive = null
   }
@@ -483,18 +536,20 @@ useProjectStore.subscribe((state) => {
 
   const p = usePlayerStore.getState()
   const list = state.cues
-  // 재생 중인 큐가 목록에서 사라지면 정지 (프로젝트 전환, 재생 중인 큐 삭제)
-  if (p.playingCueId && !list.some((c) => c.id === p.playingCueId)) {
-    audioEngine.stop()
-    usePlayerStore.setState({ playingCueId: null, waitingCueId: null })
+  // 재생 중인 큐가 목록에서 사라지면 그 큐만 정지 (프로젝트 전환이면 전부, 재생 중인 큐 삭제면 그것만)
+  for (const id of Object.keys(p.activeCues)) {
+    if (!list.some((c) => c.id === id)) audioEngine.stop(id)
   }
+  if (projectChanged && p.waitingCueId) usePlayerStore.setState({ waitingCueId: null })
 
   // 재생 중인 큐의 설정이 바뀌었으면 지금 나는 소리에 바로 반영
-  const playing = p.playingCueId ? list.find((c) => c.id === p.playingCueId) : undefined
-  const playingBefore = playing && before.find((c) => c.id === playing.id)
-  // 이름/메모/마커만 바뀐 경우는 소리에 영향이 없으므로 건드리지 않는다
-  if (playing && !projectChanged && playingBefore && !sameEditValues(pickEditValues(playingBefore), pickEditValues(playing))) {
-    audioEngine.applyCueSettings(playing)
+  // (이름/메모/마커만 바뀐 경우는 소리에 영향이 없으므로 건드리지 않는다)
+  if (!projectChanged) {
+    for (const id of Object.keys(p.activeCues)) {
+      const now = list.find((c) => c.id === id)
+      const was = before.find((c) => c.id === id)
+      if (now && was && !sameEditValues(pickEditValues(was), pickEditValues(now))) audioEngine.applyCueSettings(now, id)
+    }
   }
 
   let standby = p.standbyCueId

@@ -1623,3 +1623,71 @@ button {
 .check-manual .check-icon {
   color: var(--muted);
 }
+
+/* ───────── 앱 안 확인/입력 창 ───────── */
+.dialog-backdrop {
+  z-index: 40;
+}
+
+.dialog {
+  width: min(480px, 100%);
+}
+
+.dialog h2 {
+  margin: 0 0 8px;
+}
+
+.dialog-message {
+  margin: 0 0 14px;
+  font-size: 18px;
+  white-space: pre-line;
+}
+
+.dialog-input {
+  width: 100%;
+  min-height: 56px;
+  margin-bottom: 14px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 20px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.dialog-buttons .btn {
+  min-height: 60px;
+}
+
+.btn-danger-solid {
+  color: #fff;
+  background: #b3261e;
+  border-color: #ff5d5d;
+}
+
+/* ───────── 겹쳐 재생: 큐별 정지 ───────── */
+.row-stop {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 4px;
+}
+
+.row-stop-btn {
+  min-width: 48px;
+  min-height: 48px;
+  font-size: 20px;
+  font-weight: 900;
+  color: #ff8a8a;
+  background: #2a1616;
+  border: 2px solid #6b2a2a;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.now-others {
+  color: var(--accent);
+}

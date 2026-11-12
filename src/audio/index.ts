@@ -19,5 +19,6 @@ export { renderCue, lowerToAvoidClipping, estimatePeak, type RenderedAudio } fro
 export { encodeWav16, wavSize } from './wav.ts'
 export { encodeMp3, effectiveKbps, mp3Size, MP3_MAX_SAMPLE_RATE } from './mp3.ts'
 export { sniffSampleRate } from './sniff.ts'
+export { envelopeAt, fadeShape, type CueRange } from './envelope.ts'
 export { isAppleMobile, resolveOutputKind } from './output.ts'
 export { testDecode } from './analyze.ts'

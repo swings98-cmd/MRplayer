@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { AppErrorBanner, ReconnectBanner, UpdateBanner } from './components/Banners.tsx'
+import { DialogHost } from './components/DialogHost.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 import { TabBar } from './components/TabBar.tsx'
 import { usePerformanceGuards } from './components/usePerformanceGuards.ts'
@@ -58,6 +59,7 @@ export default function App() {
           </ErrorBoundary>
         )}
       </main>
+      <DialogHost />
     </div>
   )
 }

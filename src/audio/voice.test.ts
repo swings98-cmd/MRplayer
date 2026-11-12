@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { FakeContext, fakeBuffer } from '../test/fakeAudio.ts'
-import { cueRange } from './envelope.ts'
+import { cueRange, fadeShape } from './envelope.ts'
 import type { CueSettings } from './types.ts'
 import { DECLICK, Voice } from './voice.ts'
 
@@ -50,8 +50,9 @@ describe('Voice: 시작 예약', () => {
   })
   it('프리롤 시작 페이드(0.5초)', () => {
     const { ctl } = setup(cue(), 0, 0.5)
-    expect(ctl.gain.valueAt(10.25)).toBeCloseTo(0.5)
-    expect(ctl.gain.valueAt(10.5)).toBe(1)
+    expect(ctl.gain.valueAt(10)).toBe(0)
+    expect(ctl.gain.valueAt(10.25)).toBeCloseTo(fadeShape(0.5), 6) // 귀에 고른 곡선
+    expect(ctl.gain.valueAt(10.5)).toBeCloseTo(1, 9)
   })
 })
 
@@ -74,7 +75,7 @@ describe('Voice: 정지 예약', () => {
     ctx.currentTime = 12
     voice.release(3)
     expect(ctl.gain.valueAt(12)).toBe(1)
-    expect(ctl.gain.valueAt(13.5)).toBeCloseTo(0.5)
+    expect(ctl.gain.valueAt(13.5)).toBeCloseTo(fadeShape(0.5), 6) // 절반 지점 -24dB
     expect(ctl.gain.valueAt(15)).toBe(0)
     expect(source.stops.at(-1)).toBeCloseTo(15.005)
     expect(voice.isReleasing).toBe(true)
@@ -83,9 +84,9 @@ describe('Voice: 정지 예약', () => {
     const { ctx, voice, ctl } = setup(cue())
     ctx.currentTime = 12
     voice.release(4) // 16초에 0
-    ctx.currentTime = 13 // 이때 0.75
+    ctx.currentTime = 13 // 1/4 지났으므로 곡선 값 fadeShape(0.75)
     voice.release(DECLICK)
-    expect(ctl.gain.valueAt(13)).toBeCloseTo(0.75)
+    expect(ctl.gain.valueAt(13)).toBeCloseTo(fadeShape(0.75), 6)
     expect(ctl.gain.valueAt(13 + DECLICK)).toBe(0)
   })
   it('더 긴 release는 무시한다 (정지 후 페이드 아웃을 눌러도 길어지지 않음)', () => {

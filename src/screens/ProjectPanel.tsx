@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { askConfirm, askPrompt } from '../store/dialogStore.ts'
 import { useEngineState } from '../components/useEngine.ts'
 import { TransferPanel } from './TransferPanel.tsx'
 import { isEngineActive } from '../store/playerStore.ts'
@@ -29,8 +30,8 @@ export function ProjectPanel({ result, setResult, onImport }: Props) {
   const sorted = [...projects].sort((a, b) => a.name.localeCompare(b.name, 'ko'))
 
   const onNewProject = async () => {
-    if (isEngineActive() && !window.confirm('⚠️ 지금 재생 중입니다. 새 프로젝트로 바꾸면 재생이 멈춥니다.\n계속할까요?')) return
-    const name = window.prompt('새 프로젝트 이름', '새 프로젝트')
+    if (isEngineActive() && !(await askConfirm('⚠️ 지금 재생 중입니다. 새 프로젝트로 바꾸면 재생이 멈춥니다.\n계속할까요?'))) return
+    const name = await askPrompt('새 프로젝트 이름', '새 프로젝트')
     if (name === null) return
     await createProject(name)
     setResult(null)
@@ -38,16 +39,17 @@ export function ProjectPanel({ result, setResult, onImport }: Props) {
 
   const onRenameProject = async () => {
     if (!project) return
-    const name = window.prompt('프로젝트 이름', project.name)
+    const name = await askPrompt('프로젝트 이름', project.name)
     if (name !== null) await renameProject(project.id, name)
   }
 
   const onDeleteProject = async () => {
     if (!project) return
-    const ok = window.confirm(
+    const ok = await askConfirm(
       playingWarning('삭제하면 재생이 멈춥니다.') +
         `"${project.name}" 프로젝트와 큐 ${project.cueIds.length}개를 삭제할까요?\n` +
         '다른 프로젝트가 쓰지 않는 음원 파일도 함께 삭제되며, 되돌릴 수 없습니다.',
+      { confirmLabel: '삭제', danger: true },
     )
     if (!ok) return
     await deleteProject(project.id)
@@ -64,10 +66,11 @@ export function ProjectPanel({ result, setResult, onImport }: Props) {
               className="select grow"
               value={currentProjectId ?? ''}
               disabled={!!importing}
-              onChange={(e) => {
-                const id = e.target.value
-                if (isEngineActive() && !window.confirm('⚠️ 지금 재생 중입니다. 프로젝트를 바꾸면 재생이 멈춥니다.\n바꿀까요?')) {
-                  e.target.value = currentProjectId ?? ''
+              onChange={async (e) => {
+                const select = e.target
+                const id = select.value
+                if (isEngineActive() && !(await askConfirm('⚠️ 지금 재생 중입니다. 프로젝트를 바꾸면 재생이 멈춥니다.\n바꿀까요?'))) {
+                  select.value = currentProjectId ?? ''
                   return
                 }
                 setResult(null)

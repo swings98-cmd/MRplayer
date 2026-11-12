@@ -3,6 +3,7 @@
  * 탭하면 그 지점부터 바로 재생 (다른 곳을 재생 중이면 끊고).
  */
 import { useState } from 'react'
+import { askConfirm, askPrompt } from '../store/dialogStore.ts'
 import { ColorPicker } from '../components/ColorPicker.tsx'
 import { formatTimeMs } from '../components/format.ts'
 import { markerHex } from '../components/markerColors.ts'
@@ -29,17 +30,17 @@ export function MarkerPad() {
   // 재생 중인 큐가 따로 있으면 M은 그 큐에 찍힌다
   const markTarget = state !== 'stopped' && playingCueId ? cues.find((c) => c.id === playingCueId) : cue
 
-  const rename = (m: Marker) => {
+  const rename = async (m: Marker) => {
     if (!cue) return
-    const name = window.prompt('마커 이름', m.name)
+    const name = await askPrompt('마커 이름', m.name)
     if (name !== null && name.trim()) updateMarker(cue.id, m.id, { name: name.trim() })
   }
-  const remove = (m: Marker) => {
+  const remove = async (m: Marker) => {
     if (!cue) return
     setMenuId(null)
     let msg = `"${m.name}" 마커를 삭제할까요?`
     if (state !== 'stopped') msg = `⚠️ 지금 재생 중입니다. (재생은 계속됩니다)\n\n${msg}`
-    if (window.confirm(msg)) deleteMarker(cue.id, m.id)
+    if (await askConfirm(msg, { confirmLabel: '삭제', danger: true })) deleteMarker(cue.id, m.id)
   }
 
   return (

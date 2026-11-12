@@ -9,6 +9,7 @@
  * - 트랙패드 좌우 쓸기: 좌우 스크롤
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { envelopeAt, type CueRange } from '../audio/index.ts'
 import type { Marker } from '../store/types.ts'
 import { formatTimeMs } from './format.ts'
 import { markerHex } from './markerColors.ts'
@@ -202,17 +203,20 @@ export function Waveform(props: Props) {
     }
 
     // 페이드: 볼륨 곡선 위쪽을 어둡게 + 곡선
-    const fi = Math.max(0, fadeIn)
-    const fo = Math.max(0, fadeOut)
-    const envAt = (t: number) => {
-      let k = 1
-      if (fi > 0) k = Math.min(k, (t - shownIn) / fi)
-      if (fo > 0) k = Math.min(k, (shownOut - t) / fo)
-      return clamp(k, 0, 1)
+    // 재생과 같은 볼륨 곡선 계산(envelopeAt)을 쓴다. 화면 2px마다 한 점
+    const shape: CueRange = {
+      inPoint: shownIn,
+      outPoint: shownOut,
+      fadeIn: Math.max(0, Math.min(fadeIn, shownOut - shownIn)),
+      fadeOut: Math.max(0, Math.min(fadeOut, shownOut - shownIn)),
+      gain: 1,
     }
-    const pts = [shownIn, shownIn + fi, shownOut - fo, shownOut]
-    if (fi > 0 && fo > 0) pts.push((shownOut * fi + shownIn * fo) / (fi + fo))
-    const xs = pts.filter((t) => t >= shownIn && t <= shownOut).sort((a, b) => a - b)
+    const envAt = (t: number) => envelopeAt(shape, t)
+    const visFrom = Math.max(shownIn, start)
+    const visTo = Math.min(shownOut, start + span)
+    const xs = [shownIn]
+    for (let t = visFrom; t < visTo; t += 2 / pps) xs.push(t)
+    xs.push(visTo, shownOut)
     const envY = (g: number) => laneTop + 4 + (1 - g) * (laneH - 8)
     ctx.beginPath()
     ctx.moveTo(toX(shownIn), laneTop)

@@ -8,16 +8,28 @@
  * env와 ctl을 나눠서, 정지·페이드 아웃이 큐 볼륨 곡선 예약을 건드리지 않게 한다.
  * ctl의 현재 값은 직접 계산해서 알고 있으므로 연속 조작에도 값이 튀지 않는다.
  */
-import { envelopeAt, scheduleEnvelope, type CueRange } from './envelope.ts'
+import { curvePoints, envelopeAt, fadeShape, scheduleEnvelope, type CueRange } from './envelope.ts'
 
 /** 시작/정지 때 딸깍 소리를 없애는 짧은 페이드 길이(초) */
 export const DECLICK = 0.01
+
+/** 이보다 긴 시작/정지 페이드는 귀에 고른 곡선으로, 짧은 것(디클릭)은 직선으로 */
+const CURVE_MIN_SECONDS = 0.1
 
 interface Ramp {
   t0: number
   v0: number
   t1: number
   v1: number
+  curved: boolean
+}
+
+/** 램프 진행 비율 f(0~1)에서의 값: 0에서 올라오거나 0으로 내려가면 곡선, 그 외는 직선 */
+function rampValue(r: Ramp, f: number): number {
+  if (!r.curved) return r.v0 + (r.v1 - r.v0) * f
+  if (r.v1 === 0) return r.v0 * fadeShape(1 - f)
+  if (r.v0 === 0) return r.v1 * fadeShape(f)
+  return r.v0 + (r.v1 - r.v0) * f
 }
 
 export class Voice {
@@ -71,10 +83,7 @@ export class Voice {
 
     scheduleEnvelope(this.env.gain, range, offset, when)
 
-    this.ctl.gain.setValueAtTime(0, when)
-    const fadeEnd = when + Math.max(DECLICK, startFade)
-    this.ctl.gain.linearRampToValueAtTime(1, fadeEnd)
-    this.ctlRamp = { t0: when, v0: 0, t1: fadeEnd, v1: 1 }
+    this.ctlRamp = this.rampCtl(0, 1, when, when + Math.max(DECLICK, startFade))
 
     this.source.onended = () => this.finish()
     // duration을 주면 아웃 포인트에서 오디오 스레드가 알아서 멈춘다
@@ -117,7 +126,17 @@ export class Voice {
     const r = this.ctlRamp
     if (t <= r.t0) return r.v0
     if (t >= r.t1) return r.v1
-    return r.v0 + ((r.v1 - r.v0) * (t - r.t0)) / (r.t1 - r.t0)
+    return rampValue(r, (t - r.t0) / (r.t1 - r.t0))
+  }
+
+  /** ctl 볼륨을 t0~t1 동안 v0 → v1로 예약 (긴 것은 곡선 조각으로) */
+  private rampCtl(v0: number, v1: number, t0: number, t1: number): Ramp {
+    const r: Ramp = { t0, v0, t1, v1, curved: t1 - t0 >= CURVE_MIN_SECONDS }
+    const g = this.ctl.gain
+    g.setValueAtTime(v0, t0)
+    if (!r.curved) g.linearRampToValueAtTime(v1, t1)
+    else for (const t of curvePoints(t0, t1).slice(1)) g.linearRampToValueAtTime(rampValue(r, (t - t0) / (t1 - t0)), t)
+    return r
   }
 
   /**
@@ -130,12 +149,9 @@ export class Voice {
     const endT = now + Math.max(DECLICK, seconds)
     if (this.stopAt !== null && this.stopAt <= endT) return
 
-    const g = this.ctl.gain
     const v = this.ctlAt(now)
-    g.cancelScheduledValues(now)
-    g.setValueAtTime(v, now)
-    g.linearRampToValueAtTime(0, endT)
-    this.ctlRamp = { t0: now, v0: v, t1: endT, v1: 0 }
+    this.ctl.gain.cancelScheduledValues(now)
+    this.ctlRamp = this.rampCtl(v, 0, now, endT)
     this.stopAt = endT
     try {
       this.source.stop(endT + 0.005)

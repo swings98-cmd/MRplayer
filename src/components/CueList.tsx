@@ -8,8 +8,11 @@ interface Props {
   cues: Cue[]
   audio: Record<string, AudioMeta>
   standbyId: string | null
-  playingId: string | null
-  playState: PlaybackState
+  /** 재생/페이드/일시정지 중인 큐들 (겹쳐 재생이면 여러 개) */
+  activeCues: Record<string, 'playing' | 'fading' | 'paused'>
+  /** 재생 중인 큐 하나만 정지 / 페이드 아웃 */
+  onStopCue: (cueId: string) => void
+  onFadeCue: (cueId: string) => void
   readyAudioIds: Record<string, true>
   waitingId: string | null
   /** 디코딩에 실패한 음원: audioId → 이유 */
@@ -50,7 +53,7 @@ function trimmedLength(cue: Cue, meta: AudioMeta | undefined): number | null {
 }
 
 export function CueList(props: Props) {
-  const { cues, audio, standbyId, playingId, playState, readyAudioIds, waitingId } = props
+  const { cues, audio, standbyId, activeCues, readyAudioIds, waitingId } = props
   const listRef = useRef<HTMLOListElement>(null)
   const rowRefs = useRef(new Map<string, HTMLLIElement>())
   const [drag, setDrag] = useState<DragState | null>(null)
@@ -127,7 +130,8 @@ export function CueList(props: Props) {
     <ol ref={listRef} className={`play-list${drag ? ' is-dragging' : ''}`}>
       {cues.map((cue, i) => {
         const meta = audio[cue.audioId]
-        const isPlaying = cue.id === playingId
+        const playState = activeCues[cue.id]
+        const isPlaying = !!playState
         const isStandby = cue.id === standbyId
         const isDragged = drag?.from === i
         const len = trimmedLength(cue, meta)
@@ -181,7 +185,7 @@ export function CueList(props: Props) {
                   )}
                 </span>
                 <span className="play-side">
-                  {isPlaying && STATE_BADGE[playState] && (
+                  {playState && STATE_BADGE[playState] && (
                     <span className="badge badge-playing">{STATE_BADGE[playState]}</span>
                   )}
                   {isStandby && !isPlaying && <span className="badge badge-standby">대기</span>}
@@ -192,6 +196,19 @@ export function CueList(props: Props) {
                   <span className="play-len">{len === null ? '-' : formatDuration(len)}</span>
                 </span>
               </button>
+              {playState && playState !== 'paused' && (
+                // 재생 중인 큐 하나만 멈추기 (겹쳐 재생 중 앞 곡 정리). 공연 모드에서도 된다
+                <span className="row-stop">
+                  {playState === 'playing' && (
+                    <button className="row-stop-btn" aria-label={`${cue.name} 페이드 아웃`} onClick={() => props.onFadeCue(cue.id)}>
+                      ↘
+                    </button>
+                  )}
+                  <button className="row-stop-btn" aria-label={`${cue.name} 정지`} onClick={() => props.onStopCue(cue.id)}>
+                    ■
+                  </button>
+                </span>
+              )}
               {!props.locked && (
                 <button
                   className="row-menu-btn"

@@ -3,6 +3,7 @@
  * 재생 안정성을 위해 재생 중에는 시작할 수 없다.
  */
 import { useMemo, useRef, useState } from 'react'
+import { askConfirm } from '../store/dialogStore.ts'
 import { formatBytes } from '../components/format.ts'
 import { useEngineState } from '../components/useEngine.ts'
 import { canShareFile, downloadFile, shareFile } from '../store/fileSave.ts'
@@ -124,9 +125,9 @@ export function TransferPanel() {
     }
   }
 
-  const openImported = () => {
+  const openImported = async () => {
     if (!imported) return
-    if (isEngineActive() && !window.confirm('⚠️ 지금 재생 중입니다. 프로젝트를 바꾸면 재생이 멈춥니다.\n바꿀까요?')) return
+    if (isEngineActive() && !(await askConfirm('⚠️ 지금 재생 중입니다. 프로젝트를 바꾸면 재생이 멈춥니다.\n바꿀까요?'))) return
     void switchProject(imported.id)
     setImported(null)
   }

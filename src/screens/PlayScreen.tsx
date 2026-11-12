@@ -1,4 +1,5 @@
 import { CueList } from '../components/CueList.tsx'
+import { askConfirm, askPrompt } from '../store/dialogStore.ts'
 import { formatDuration } from '../components/format.ts'
 import { markerHex } from '../components/markerColors.ts'
 import { ProgressBar } from '../components/ProgressBar.tsx'
@@ -15,28 +16,38 @@ const canKeyboard = typeof window !== 'undefined' && window.matchMedia?.('(point
 export function PlayScreen() {
   usePlayShortcuts()
   const { ready, cues, audio, updateCue, duplicateCue, deleteCue, moveCue } = useProjectStore()
-  const { standbyCueId, playingCueId, readyAudioIds, waitingCueId, error, notice, failedAudio, setStandby, clearError } =
-    usePlayerStore()
-  const playState = useEngineState()
+  const {
+    standbyCueId,
+    activeCues,
+    readyAudioIds,
+    waitingCueId,
+    error,
+    notice,
+    failedAudio,
+    setStandby,
+    clearError,
+    stopCue,
+    fadeOutCue,
+  } = usePlayerStore()
   const performanceMode = useSettingsStore((s) => s.performanceMode)
 
   if (!ready) return <p className="muted">불러오는 중…</p>
 
-  const onRename = (cue: Cue) => {
-    const name = window.prompt('큐 이름', cue.name)
+  const onRename = async (cue: Cue) => {
+    const name = await askPrompt('큐 이름', cue.name)
     if (name !== null && name.trim()) updateCue(cue.id, { name: name.trim() })
   }
 
-  const onMemo = (cue: Cue) => {
-    const memo = window.prompt('짧은 메모 (예: 암전 후 GO)', cue.memo)
+  const onMemo = async (cue: Cue) => {
+    const memo = await askPrompt('짧은 메모 (예: 암전 후 GO)', cue.memo)
     if (memo !== null) updateCue(cue.id, { memo: memo.trim() })
   }
 
-  const onDelete = (cue: Cue) => {
+  const onDelete = async (cue: Cue) => {
     let msg = `"${cue.name}" 큐를 삭제할까요?\n다른 큐가 쓰지 않는 음원 파일도 함께 삭제되며, 되돌릴 수 없습니다.`
-    if (cue.id === playingCueId) msg = `⚠️ 지금 재생 중인 큐입니다. 삭제하면 소리가 멈춥니다.\n\n${msg}`
+    if (activeCues[cue.id]) msg = `⚠️ 지금 재생 중인 큐입니다. 삭제하면 소리가 멈춥니다.\n\n${msg}`
     else if (isEngineActive()) msg = `⚠️ 지금 재생 중입니다.\n\n${msg}`
-    if (window.confirm(msg)) void deleteCue(cue.id)
+    if (await askConfirm(msg, { confirmLabel: '삭제', danger: true })) void deleteCue(cue.id)
   }
 
   return (
@@ -61,8 +72,9 @@ export function PlayScreen() {
           cues={cues}
           audio={audio}
           standbyId={standbyCueId}
-          playingId={playingCueId}
-          playState={playState}
+          activeCues={activeCues}
+          onStopCue={stopCue}
+          onFadeCue={fadeOutCue}
           readyAudioIds={readyAudioIds}
           waitingId={waitingCueId}
           onSelect={setStandby}
@@ -97,10 +109,12 @@ function PanicBar() {
   const performanceMode = useSettingsStore((s) => s.performanceMode)
   const update = useSettingsStore((s) => s.update)
 
-  const toggle = () => {
+  const toggle = async () => {
     if (!performanceMode) update({ performanceMode: true })
-    // 끌 때는 실수로 풀리지 않게 한 번 더 묻는다
-    else if (window.confirm('공연 모드를 끌까요?\n큐 삭제, 순서 변경, 편집이 다시 가능해집니다.')) update({ performanceMode: false })
+    // 끌 때는 실수로 풀리지 않게 한 번 더 묻는다 (앱 안 창: 기본 창은 재생 중 소리를 끊는다)
+    else if (await askConfirm('공연 모드를 끌까요?\n큐 삭제, 순서 변경, 편집이 다시 가능해집니다.', { confirmLabel: '공연 모드 끄기' })) {
+      update({ performanceMode: false })
+    }
   }
 
   return (
@@ -157,12 +171,19 @@ function NowPlaying() {
   const meta = audio[playing.audioId]
   const start = playing.inPoint
   const end = playing.outPoint ?? meta?.duration ?? start
-  const pos = Math.min(end, Math.max(start, snap.position))
-  const label = snap.state === 'paused' ? '일시정지' : snap.state === 'fading' ? '페이드 아웃 중' : '재생 중'
+  // 화면에는 가장 최근에 시작한 큐를 보여준다 (겹쳐 재생이면 나머지는 개수로)
+  const mine = snap.active.find((a) => a.key === playing.id)
+  const state = mine?.state ?? snap.state
+  const pos = Math.min(end, Math.max(start, mine?.position ?? snap.position))
+  const label = state === 'paused' ? '일시정지' : state === 'fading' ? '페이드 아웃 중' : '재생 중'
+  const others = snap.active.filter((a) => a.key !== playing.id && cues.some((c) => c.id === a.key)).length
 
   return (
-    <div className={`now-playing is-${snap.state}`}>
-      <div className="now-label">{label}</div>
+    <div className={`now-playing is-${state}`}>
+      <div className="now-label">
+        {label}
+        {others > 0 && <span className="now-others"> · +{others}개 함께 재생 중</span>}
+      </div>
       <div className="now-name">{playing.name}</div>
       <div className="now-times">
         <div>

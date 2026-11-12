@@ -1,5 +1,6 @@
 /** 편집 화면의 마커 목록 (시간순): 색, 이름, 시간 입력, 재생, 삭제 */
 import { useState } from 'react'
+import { askConfirm, askPrompt } from '../store/dialogStore.ts'
 import { ColorPicker } from '../components/ColorPicker.tsx'
 import { markerHex } from '../components/markerColors.ts'
 import { TimeInput } from '../components/TimeInput.tsx'
@@ -19,13 +20,13 @@ export function MarkerList({ cue, duration, onAdd }: Props) {
   const playMarker = usePlayerStore((s) => s.playMarker)
   const [colorFor, setColorFor] = useState<string | null>(null)
 
-  const rename = (m: Marker) => {
-    const name = window.prompt('마커 이름', m.name)
+  const rename = async (m: Marker) => {
+    const name = await askPrompt('마커 이름', m.name)
     if (name !== null && name.trim()) updateMarker(cue.id, m.id, { name: name.trim() })
   }
 
-  const remove = (m: Marker) => {
-    if (window.confirm(`"${m.name}" 마커를 삭제할까요?`)) deleteMarker(cue.id, m.id)
+  const remove = async (m: Marker) => {
+    if (await askConfirm(`"${m.name}" 마커를 삭제할까요?`, { confirmLabel: '삭제', danger: true })) deleteMarker(cue.id, m.id)
   }
 
   return (
