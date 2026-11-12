@@ -18,6 +18,13 @@
 - 상태 관리: zustand
 - 저장: IndexedDB (idb 라이브러리)
 - 오디오: Web Audio API (오디오 관련 코드는 src/audio 아래에만 둔다)
+  - 출력 경로는 기기에 따라 다르게 쓴다
+    - 아이패드/아이폰: AudioBufferSourceNode → GainNode → MediaStreamAudioDestinationNode
+      → `<audio>` 요소의 srcObject (백그라운드 재생 유지용)
+    - 윈도우/맥: GainNode → AudioContext.destination에 직접 연결
+  - 출력 경로 선택은 src/audio의 한 곳에서만 한다
+  - 아이패드에서 destination에 직접 연결하면 화면을 벗어나는 즉시 interrupted 되어
+    소리가 멈춘다 (2026-11-12 mr-audio-test로 확인)
 - PWA: vite-plugin-pwa
 - 배포: GitHub Actions로 GitHub Pages 자동 배포
 
