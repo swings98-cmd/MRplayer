@@ -4,7 +4,6 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'play', label: '플레이' },
   { id: 'edit', label: '편집' },
   { id: 'settings', label: '설정' },
-  { id: 'test', label: '엔진 테스트(임시)' }, // 확인 후 삭제
 ]
 
 export function TabBar() {

@@ -152,6 +152,11 @@ export class AudioEngine {
     return this.buffers.has(audioId)
   }
 
+  /** 디코딩해서 캐시에 올라가 있는 음원 id 목록 */
+  loadedIds(): string[] {
+    return [...this.buffers.keys()]
+  }
+
   /** 디코딩된 길이(초). 로드 안 됐으면 null */
   getDuration(audioId: string): number | null {
     return this.buffers.get(audioId)?.duration ?? null
@@ -174,8 +179,9 @@ export class AudioEngine {
    * 재생. 인 포인트(또는 startAt)에서 시작해 아웃 포인트에서 자동 종료.
    * 재생 중이면 이전 재생은 짧은 페이드(10ms) 후 정지하고 새로 시작한다.
    * @param startAt 파일 위치(초). 주면 그 지점부터 재생 (마커 점프용). 인/아웃 범위로 맞춘다.
+   * @param options.fadePreviousSeconds 이전 재생을 이 시간 동안 페이드 아웃하며 새로 재생 (기본 10ms)
    */
-  play(cue: CueSettings, startAt?: number): void {
+  play(cue: CueSettings, startAt?: number, options?: { fadePreviousSeconds?: number }): void {
     const buffer = this.buffers.get(cue.audioId)
     if (!buffer) throw new Error(`로드되지 않은 음원입니다: ${cue.audioId}`)
 
@@ -186,7 +192,7 @@ export class AudioEngine {
 
     const from = clamp(startAt ?? range.inPoint, range.inPoint, range.outPoint - MIN_LENGTH)
 
-    this.releaseCurrent(DECLICK)
+    this.releaseCurrent(Math.max(DECLICK, options?.fadePreviousSeconds ?? DECLICK))
     this.paused = null
 
     const voice = new Voice(ctx, this.master!, buffer, cue.audioId, range, from)
@@ -241,6 +247,24 @@ export class AudioEngine {
       return
     }
     this.play(cue, position)
+  }
+
+  /**
+   * 위치 이동(초, 파일 기준). 재생 중이면 그 지점부터 다시 재생하고,
+   * 일시정지 중이면 이어 재생할 위치만 바꾼다. 정지 상태면 무시.
+   */
+  seek(position: number): void {
+    if (this.state === 'paused' && this.paused) {
+      const duration = this.getDuration(this.paused.cue.audioId)
+      if (duration === null) return
+      const r = toRange(this.paused.cue, duration)
+      this.paused = { ...this.paused, position: clamp(position, r.inPoint, r.outPoint - MIN_LENGTH) }
+      this.emit()
+      return
+    }
+    if ((this.state === 'playing' || this.state === 'fading') && this.currentCue) {
+      this.play(this.currentCue, position)
+    }
   }
 
   /** 모든 소리를 즉시 정지 (페이드 없음) */

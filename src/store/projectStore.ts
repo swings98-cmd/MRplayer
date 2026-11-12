@@ -47,6 +47,10 @@ interface ProjectState {
   /** 큐 설정 변경. 화면에는 바로 반영하고 저장은 잠시 뒤에 모아서 한다. */
   updateCue(id: string, patch: CuePatch): void
   deleteCue(id: string): Promise<void>
+  /** 큐를 바로 아래에 복제 (같은 음원을 함께 씀). 새 큐 id를 돌려준다. */
+  duplicateCue(id: string): Promise<string | null>
+  /** 순서 변경 */
+  moveCue(fromIndex: number, toIndex: number): Promise<void>
   /** 미뤄 둔 저장을 지금 한다 */
   flushSaves(): Promise<void>
 }
@@ -289,6 +293,38 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       const audio = { ...get().audio }
       for (const a of deletedAudioIds) delete audio[a]
       set({ cues: get().cues.filter((c) => c.id !== id), audio })
+    },
+
+    async duplicateCue(id) {
+      const projectId = get().currentProjectId
+      const index = get().cues.findIndex((c) => c.id === id)
+      if (!projectId || index < 0) return null
+      const src = get().cues[index]
+      const copy: Cue = {
+        ...src,
+        id: newId(),
+        name: `${src.name} 복사`,
+        markers: src.markers.map((m) => ({ ...m, id: newId() })),
+      }
+      const project = await db.insertCue(projectId, copy, index + 1)
+      replaceProject(project)
+      const cues = [...get().cues]
+      cues.splice(index + 1, 0, copy)
+      set({ cues })
+      return copy.id
+    },
+
+    async moveCue(fromIndex, toIndex) {
+      const projectId = get().currentProjectId
+      const project = get().projects.find((p) => p.id === projectId)
+      const cues = [...get().cues]
+      if (!project || fromIndex === toIndex || !cues[fromIndex] || toIndex < 0 || toIndex >= cues.length) return
+      const [moved] = cues.splice(fromIndex, 1)
+      cues.splice(toIndex, 0, moved)
+      const updated: Project = { ...project, cueIds: cues.map((c) => c.id), updatedAt: Date.now() }
+      set({ cues })
+      replaceProject(updated)
+      await db.putProject(updated)
     },
 
     flushSaves: flushPending,

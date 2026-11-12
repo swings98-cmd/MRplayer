@@ -296,3 +296,516 @@ button {
   border: 4px dashed var(--accent);
   pointer-events: none;
 }
+
+/* ───────── 플레이 화면 ───────── */
+.screen:has(> .play) {
+  overflow: hidden;
+  padding: 12px;
+}
+
+.play {
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
+  gap: 12px;
+}
+
+.play-cues {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.play-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.play-list.is-dragging {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.cue-empty {
+  padding: 20px;
+}
+
+.play-row {
+  position: relative;
+  margin-bottom: 6px;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  background: #1c1f27;
+  transition: transform 0.15s ease;
+}
+
+.play-row.is-dragged {
+  z-index: 2;
+  transition: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  background: #262a35;
+}
+
+.play-row.is-standby {
+  border-color: var(--accent);
+}
+
+.play-row.is-playing,
+.play-row.is-fading {
+  background: #11402a;
+  border-color: #3ccf7a;
+}
+
+.play-row.is-paused {
+  background: #3d3410;
+  border-color: #ffc94d;
+}
+
+.play-row-main {
+  display: flex;
+  align-items: stretch;
+}
+
+.drag-handle,
+.row-menu-btn {
+  flex: 0 0 52px;
+  min-height: 64px;
+  font-size: 24px;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  cursor: grab;
+  touch-action: none;
+}
+
+.row-menu-btn {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.play-row-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 4px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.play-no {
+  flex: 0 0 32px;
+  text-align: right;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.play-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.play-name {
+  font-size: 21px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.play-memo {
+  font-size: 15px;
+  color: #ffb27a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.play-side {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.play-len {
+  min-width: 52px;
+  text-align: right;
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+}
+
+.badge {
+  font-size: 14px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: #2a2f3a;
+  white-space: nowrap;
+}
+
+.badge-standby {
+  background: var(--accent);
+  color: #1a1a1a;
+}
+
+.badge-playing {
+  background: #3ccf7a;
+  color: #0b1a10;
+}
+
+.play-row.is-paused .badge-playing {
+  background: #ffc94d;
+}
+
+.badge-muted {
+  color: var(--muted);
+}
+
+.row-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 8px 10px 60px;
+}
+
+.row-menu .btn {
+  flex: 1 1 100px;
+  min-height: 52px;
+}
+
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  color: #ffb3b3;
+  background: #3a1616;
+  border-bottom: 1px solid #6b2a2a;
+}
+
+.error-banner span {
+  flex: 1;
+}
+
+/* 오른쪽 패널 */
+.play-panel {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.panic-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.btn-panic {
+  min-height: 56px;
+  padding: 0 22px;
+  font-size: 18px;
+  font-weight: 900;
+  color: #fff;
+  background: #b3261e;
+  border: 3px solid #ff5d5d;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.now-playing {
+  padding: 14px 16px 18px;
+  background: var(--surface);
+  border: 2px solid var(--line);
+  border-radius: 14px;
+}
+
+.now-playing.is-playing,
+.now-playing.is-fading {
+  border-color: #3ccf7a;
+  background: #0f3322;
+}
+
+.now-playing.is-paused {
+  border-color: #ffc94d;
+  background: #2e2810;
+}
+
+.now-label {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.now-playing.is-playing .now-label,
+.now-playing.is-fading .now-label {
+  color: #3ccf7a;
+}
+
+.now-playing.is-paused .now-label {
+  color: #ffc94d;
+}
+
+.now-name {
+  margin: 2px 0 10px;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.now-playing.is-idle .now-name {
+  font-size: 22px;
+  color: var(--muted);
+}
+
+.now-times {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.now-times > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.now-times > div:last-child {
+  align-items: flex-end;
+}
+
+.now-time-label {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.now-time {
+  font-size: 48px;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.progress {
+  position: relative;
+  height: 44px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.progress.disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.progress-track {
+  position: absolute;
+  top: 17px;
+  left: 0;
+  right: 0;
+  height: 10px;
+  border-radius: 5px;
+  background: #2a2f3a;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #3ccf7a;
+}
+
+.now-playing.is-paused .progress-fill {
+  background: #ffc94d;
+}
+
+.progress-thumb {
+  position: absolute;
+  top: 10px;
+  width: 24px;
+  height: 24px;
+  margin-left: -12px;
+  border-radius: 50%;
+  background: var(--text);
+}
+
+.progress.dragging .progress-thumb {
+  transform: scale(1.25);
+}
+
+.transport {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.btn-go {
+  min-height: 110px;
+  font-size: 48px;
+  font-weight: 900;
+  letter-spacing: 4px;
+  color: #0b1a10;
+  background: #3ccf7a;
+  border: none;
+  border-radius: 16px;
+  cursor: pointer;
+}
+
+.btn-go:disabled {
+  opacity: 0.35;
+}
+
+.btn-go:active:not(:disabled) {
+  background: #5fe398;
+}
+
+.transport-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.btn-transport {
+  min-height: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 19px;
+  font-weight: 800;
+  background: #20242e;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.btn-transport:disabled {
+  opacity: 0.35;
+}
+
+.btn-sub {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.master {
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.master-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+}
+
+.master-label b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.master-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.master-row input[type='range'] {
+  flex: 1;
+  height: 44px;
+  accent-color: var(--accent);
+}
+
+.shortcut-help {
+  margin: 0;
+  text-align: center;
+}
+
+/* 좁은 화면(세로 아이패드 등): 조작 패널을 위로, 목록을 아래로 */
+@media (max-width: 860px) {
+  .screen:has(> .play) {
+    overflow-y: auto;
+  }
+  .play {
+    height: auto;
+    grid-template-columns: 1fr;
+  }
+  .play-panel {
+    order: -1;
+    overflow: visible;
+  }
+  .play-list {
+    max-height: none;
+  }
+  .now-time {
+    font-size: 40px;
+  }
+}
+
+/* ───────── 설정 화면 ───────── */
+.setting-label {
+  margin: 4px 0 8px;
+  color: var(--muted);
+}
+
+.choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.choice {
+  min-height: 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 14px;
+  text-align: left;
+  background: #20242e;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.choice.selected,
+.chip.selected {
+  border-color: var(--accent);
+  background: #241a12;
+}
+
+.chip {
+  flex: 1 1 70px;
+}
+
+.advanced summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+}

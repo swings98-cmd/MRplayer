@@ -1,8 +1,12 @@
 import { useRef, useState } from 'react'
 import { FileDropZone } from '../components/FileDropZone.tsx'
 import { formatDuration } from '../components/format.ts'
+import { isEngineActive } from '../store/playerStore.ts'
 import { AUDIO_ACCEPT, useProjectStore, type ImportResult } from '../store/projectStore.ts'
 import { useStorageStore } from '../store/storageStore.ts'
+
+/** 재생 중이면 경고를 덧붙인다 */
+const playingWarning = (extra: string) => (isEngineActive() ? `⚠️ 지금 재생 중입니다. ${extra}\n\n` : '')
 
 /** 마우스가 있는 기기(데스크톱)에서만 드래그 안내를 보여준다 */
 const canDrag = typeof window !== 'undefined' && window.matchMedia?.('(pointer: fine)').matches
@@ -42,6 +46,7 @@ export function EditScreen() {
   }
 
   const onNewProject = async () => {
+    if (isEngineActive() && !window.confirm('⚠️ 지금 재생 중입니다. 새 프로젝트로 바꾸면 재생이 멈춥니다.\n계속할까요?')) return
     const name = window.prompt('새 프로젝트 이름', '새 프로젝트')
     if (name === null) return
     await createProject(name)
@@ -57,7 +62,8 @@ export function EditScreen() {
   const onDeleteProject = async () => {
     if (!project) return
     const ok = window.confirm(
-      `"${project.name}" 프로젝트와 큐 ${project.cueIds.length}개를 삭제할까요?\n` +
+      playingWarning('삭제하면 재생이 멈춥니다.') +
+        `"${project.name}" 프로젝트와 큐 ${project.cueIds.length}개를 삭제할까요?\n` +
         '다른 프로젝트가 쓰지 않는 음원 파일도 함께 삭제되며, 되돌릴 수 없습니다.',
     )
     if (!ok) return
@@ -73,7 +79,8 @@ export function EditScreen() {
 
   const onDeleteCue = async (id: string, name: string) => {
     const ok = window.confirm(
-      `"${name}" 큐를 삭제할까요?\n다른 큐가 쓰지 않는 음원 파일도 함께 삭제되며, 되돌릴 수 없습니다.`,
+      playingWarning('') +
+        `"${name}" 큐를 삭제할까요?\n다른 큐가 쓰지 않는 음원 파일도 함께 삭제되며, 되돌릴 수 없습니다.`,
     )
     if (!ok) return
     await deleteCue(id)
@@ -91,8 +98,13 @@ export function EditScreen() {
               value={currentProjectId ?? ''}
               disabled={!!importing}
               onChange={(e) => {
+                const id = e.target.value
+                if (isEngineActive() && !window.confirm('⚠️ 지금 재생 중입니다. 프로젝트를 바꾸면 재생이 멈춥니다.\n바꿀까요?')) {
+                  e.target.value = currentProjectId ?? ''
+                  return
+                }
                 setResult(null)
-                void switchProject(e.target.value)
+                void switchProject(id)
               }}
               aria-label="프로젝트 선택"
             >

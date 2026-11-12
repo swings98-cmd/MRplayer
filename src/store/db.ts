@@ -91,6 +91,20 @@ export async function addImportedCue(projectId: string, meta: AudioMeta, blob: B
   return updated
 }
 
+/** 이미 저장된 음원을 쓰는 새 큐를 index 위치에 추가 (복제용). 음원은 다시 쓰지 않는다. */
+export async function insertCue(projectId: string, cue: Cue, index: number): Promise<Project> {
+  const tx = (await db()).transaction(['cues', 'projects'], 'readwrite')
+  const project = await tx.objectStore('projects').get(projectId)
+  if (!project) throw new Error('프로젝트를 찾을 수 없습니다')
+  const cueIds = [...project.cueIds]
+  cueIds.splice(index, 0, cue.id)
+  const updated: Project = { ...project, cueIds, updatedAt: Date.now() }
+  await tx.objectStore('cues').put(cue)
+  await tx.objectStore('projects').put(updated)
+  await tx.done
+  return updated
+}
+
 /** 큐 설정 저장. 음원 저장소는 건드리지 않는다. */
 export async function saveCues(projectId: string, cues: Cue[]): Promise<void> {
   const tx = (await db()).transaction(['cues', 'projects'], 'readwrite')
