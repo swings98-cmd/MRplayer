@@ -1,20 +1,37 @@
 import react from '@vitejs/plugin-react'
+import { execSync } from 'node:child_process'
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 // GitHub Pages 주소가 https://<아이디>.github.io/MRplayer/ 이므로 base를 저장소 이름에 맞춘다.
 const base = '/MRplayer/'
 
+/** 설정 화면에 보여줄 빌드 정보 */
+function gitCommit(): string {
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim()
+  } catch {
+    return ''
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   base,
+  define: {
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+    __BUILD_COMMIT__: JSON.stringify(gitCommit()),
+  },
   plugins: [
     react(),
     VitePWA({
-      // 'prompt': 새 버전이 있어도 앱을 완전히 닫았다 다시 열 때까지 기다린다.
-      // 재생 중 자동 새로고침으로 소리가 끊기는 일을 막기 위함.
+      // 'prompt': 새 버전이 있어도 자동으로 바꾸지 않는다.
+      // 앱이 "새 버전이 있습니다" 알림을 띄우고, 사용자가 "업데이트"를 눌렀을 때만 적용한다.
+      // (등록은 src/store/appUpdate.ts에서 직접 한다)
       registerType: 'prompt',
-      injectRegister: 'script',
+      injectRegister: false,
+      // 아이콘은 globPatterns로 이미 캐시되므로 중복으로 넣지 않는다
+      includeManifestIcons: false,
       manifest: {
         name: 'MR 큐 플레이어',
         short_name: 'MR 큐',

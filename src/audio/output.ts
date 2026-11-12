@@ -16,6 +16,10 @@ export interface Output {
   readonly input: AudioNode
   /** 사용자 탭 안에서 호출. stream이면 멈춰 있는 <audio>를 다시 재생 상태로 만든다 */
   unlock(): void
+  /** 출력이 바깥 사정(전화, 알람, 잠금 화면의 일시정지 등)으로 멈춰 있는지. stream일 때만 의미가 있다 */
+  isPaused(): boolean
+  /** isPaused가 바뀔 때 호출할 함수 */
+  onChange: (() => void) | null
   /** 경로를 바꿀 때만 사용 */
   dispose(): void
 }
@@ -45,6 +49,8 @@ export function createOutput(ctx: AudioContext, mode: OutputMode): Output {
     return {
       kind,
       input,
+      onChange: null,
+      isPaused: () => false,
       unlock() {},
       dispose() {
         input.disconnect()
@@ -69,9 +75,11 @@ export function createOutput(ctx: AudioContext, mode: OutputMode): Output {
   el.srcObject = streamDest.stream
   document.body.appendChild(el)
 
-  return {
+  const out: Output = {
     kind,
     input,
+    onChange: null,
+    isPaused: () => el.paused,
     unlock() {
       // 이미 재생 중이면 아무것도 하지 않는다. 절대 pause()하지 않는다.
       if (el.paused) {
@@ -93,6 +101,8 @@ export function createOutput(ctx: AudioContext, mode: OutputMode): Output {
       el.remove()
     },
   }
+  for (const type of ['play', 'playing', 'pause'] as const) el.addEventListener(type, () => out.onChange?.())
+  return out
 }
 
 /** 무음(0)을 끝없이 내보내는 소스. ConstantSourceNode가 없으면 무음 버퍼 반복으로 대신한다 */

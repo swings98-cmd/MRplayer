@@ -10,3 +10,8 @@ export function useEngineSnapshot(): EngineSnapshot {
 export function useEngineState(): PlaybackState {
   return useSyncExternalStore(audioEngine.subscribe, () => audioEngine.getSnapshot().state)
 }
+
+/** 재연결이 필요한지만. 바뀔 때만 다시 그려진다. */
+export function useNeedsReconnect(): boolean {
+  return useSyncExternalStore(audioEngine.subscribe, () => audioEngine.getSnapshot().needsReconnect)
+}

@@ -1223,3 +1223,133 @@ button {
     max-height: none;
   }
 }
+
+/* ───────── 배너 ───────── */
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 16px;
+  font-size: 18px;
+  border: none;
+  text-align: center;
+}
+
+.banner-reconnect {
+  color: #fff;
+  background: #b3261e;
+  cursor: pointer;
+  animation: banner-pulse 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes banner-pulse {
+  from {
+    background: #b3261e;
+  }
+  to {
+    background: #d8372d;
+  }
+}
+
+.banner-update {
+  background: #241a12;
+  border-bottom: 1px solid var(--accent);
+}
+
+.banner-update .btn {
+  flex: 0 0 auto;
+}
+
+/* ───────── 공연 모드 ───────── */
+.perf-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 0 16px 0 10px;
+  margin-right: auto;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--muted);
+  background: #20242e;
+  border: 2px solid var(--line);
+  border-radius: 28px;
+  cursor: pointer;
+}
+
+.perf-knob {
+  position: relative;
+  width: 46px;
+  height: 28px;
+  border-radius: 14px;
+  background: #3a404d;
+  transition: background 0.15s;
+}
+
+.perf-knob::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #d9dce3;
+  transition: transform 0.15s;
+}
+
+.perf-switch.on {
+  color: #ffc94d;
+  border-color: #ffc94d;
+  background: #2e2810;
+}
+
+.perf-switch.on .perf-knob {
+  background: #ffc94d;
+}
+
+.perf-switch.on .perf-knob::after {
+  transform: translateX(18px);
+  background: #2e2810;
+}
+
+.drag-handle.locked {
+  cursor: default;
+}
+
+.tab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 공연 모드: 당겨서 새로고침, 텍스트 선택, 길게 눌러 뜨는 메뉴 막기 */
+.perf-mode,
+.perf-mode body {
+  overscroll-behavior: none;
+}
+
+.perf-mode body,
+.perf-mode body * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.perf-mode .tabbar {
+  border-bottom-color: #ffc94d;
+}
+
+/* ───────── 도움말 ───────── */
+.help ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.help li {
+  margin-bottom: 8px;
+  line-height: 1.55;
+}

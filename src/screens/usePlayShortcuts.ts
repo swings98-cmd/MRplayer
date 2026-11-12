@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { usePlayerStore } from '../store/playerStore.ts'
 import { useProjectStore } from '../store/projectStore.ts'
+import { useSettingsStore } from '../store/settingsStore.ts'
 
 /** Esc를 이 시간 안에 두 번 누르면 패닉 */
 const DOUBLE_ESC_MS = 400
@@ -67,9 +68,9 @@ export function usePlayShortcuts(): void {
           p.moveStandby(1)
           break
         case 'KeyM':
-          // 지금 위치에 마커 (재생은 끊지 않는다)
+          // 지금 위치에 마커 (재생은 끊지 않는다). 공연 모드에서는 막는다
           e.preventDefault()
-          if (!e.repeat) p.addMarkerHere()
+          if (!e.repeat && !useSettingsStore.getState().performanceMode) p.addMarkerHere()
           break
         case 'KeyR':
           e.preventDefault()

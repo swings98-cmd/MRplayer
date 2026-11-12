@@ -20,6 +20,8 @@ export function MarkerPad() {
   const { selectedCueId, playingCueId, lastStart, playMarker, playAdjacentMarker, restartLast, addMarkerHere } =
     usePlayerStore()
   const preroll = useSettingsStore((s) => s.prerollSeconds)
+  /** 공연 모드: 마커 재생만 되고 추가/이름 변경/색/삭제는 막는다 */
+  const locked = useSettingsStore((s) => s.performanceMode)
   const state = useEngineState()
   const [menuId, setMenuId] = useState<string | null>(null)
 
@@ -57,9 +59,11 @@ export function MarkerPad() {
           <button className="btn small-btn" disabled={!lastStart} onClick={restartLast} title={lastStart?.label}>
             ↺ 다시{canKeyboard && ' (R)'}
           </button>
-          <button className="btn btn-primary small-btn" disabled={!markTarget} onClick={() => addMarkerHere()}>
-            + 마커{canKeyboard && ' (M)'}
-          </button>
+          {!locked && (
+            <button className="btn btn-primary small-btn" disabled={!markTarget} onClick={() => addMarkerHere()}>
+              + 마커{canKeyboard && ' (M)'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -67,7 +71,7 @@ export function MarkerPad() {
         <p className="muted small">큐를 탭하면 그 큐의 마커가 여기에 나옵니다.</p>
       ) : cue.markers.length === 0 ? (
         <p className="muted small">
-          마커가 없습니다. 재생 중에 "+ 마커"를 누르면 그 위치에 생깁니다.
+          마커가 없습니다.{!locked && ' 재생 중에 "+ 마커"를 누르면 그 위치에 생깁니다.'}
           {markTarget && markTarget.id !== cue.id && ` (지금은 재생 중인 "${markTarget.name}"에 찍힙니다)`}
         </p>
       ) : (
@@ -83,6 +87,7 @@ export function MarkerPad() {
                   <span className="marker-btn-time">{formatTimeMs(m.time)}</span>
                 </span>
               </button>
+              {!locked && (
               <button
                 className="marker-more"
                 aria-label={`${m.name} 메뉴`}
@@ -91,7 +96,8 @@ export function MarkerPad() {
               >
                 ⋯
               </button>
-              {menuId === m.id && (
+              )}
+              {menuId === m.id && !locked && (
                 <div className="marker-menu">
                   <ColorPicker value={m.color} onChange={(c) => updateMarker(cue.id, m.id, { color: c })} />
                   <div className="row">
@@ -109,7 +115,9 @@ export function MarkerPad() {
         </div>
       )}
       {canKeyboard && cue && cue.markers.length > 0 && (
-        <p className="muted small marker-help">숫자 1~9: 해당 마커부터 재생 · M: 마커 추가 · R: 마지막 시작 지점부터 다시</p>
+        <p className="muted small marker-help">
+          숫자 1~9: 해당 마커부터 재생{!locked && ' · M: 마커 추가'} · R: 마지막 시작 지점부터 다시
+        </p>
       )}
     </section>
   )

@@ -36,6 +36,11 @@ export interface EngineSnapshot {
   outputMode: OutputMode
   /** AudioContext를 아직 만들지 않았으면 null */
   outputKind: OutputKind | null
+  /**
+   * 소리가 한 번 나온 뒤에 오디오가 멈춘 상태 (화면 복귀, 전화·알람·다른 앱 소리 등).
+   * 사용자가 탭하면(unlock) 다시 연결된다.
+   */
+  needsReconnect: boolean
 }
 
 export type EngineListener = (snapshot: EngineSnapshot) => void

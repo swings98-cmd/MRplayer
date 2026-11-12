@@ -18,6 +18,10 @@ export interface AppSettings {
   outputMode: OutputMode
   /** 마커 재생 시 마커보다 몇 초 앞에서 시작할지 */
   prerollSeconds: number
+  /** 재생 중 화면 꺼짐 방지 (Screen Wake Lock) */
+  keepScreenOn: boolean
+  /** 공연 모드: 편집 조작 잠금. 새로고침해도 유지한다 */
+  performanceMode: boolean
 }
 
 export const PREROLL_CHOICES = [0, 2, 4, 8] as const
@@ -28,6 +32,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   masterVolumeDb: 0,
   outputMode: 'auto',
   prerollSeconds: 0,
+  keepScreenOn: true,
+  performanceMode: false,
 }
 
 const KEY = 'appSettings'
@@ -54,6 +60,8 @@ function pick(s: SettingsState): AppSettings {
     masterVolumeDb: s.masterVolumeDb,
     outputMode: s.outputMode,
     prerollSeconds: s.prerollSeconds,
+    keepScreenOn: s.keepScreenOn,
+    performanceMode: s.performanceMode,
   }
 }
 

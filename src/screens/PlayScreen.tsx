@@ -17,6 +17,7 @@ export function PlayScreen() {
   const { ready, cues, audio, updateCue, duplicateCue, deleteCue, moveCue } = useProjectStore()
   const { standbyCueId, playingCueId, readyAudioIds, waitingCueId, error, setStandby, clearError } = usePlayerStore()
   const playState = useEngineState()
+  const performanceMode = useSettingsStore((s) => s.performanceMode)
 
   if (!ready) return <p className="muted">불러오는 중…</p>
 
@@ -49,6 +50,7 @@ export function PlayScreen() {
           </div>
         )}
         <CueList
+          locked={performanceMode}
           cues={cues}
           audio={audio}
           standbyId={standbyCueId}
@@ -73,7 +75,8 @@ export function PlayScreen() {
         <MasterVolume />
         {canKeyboard && (
           <p className="muted small shortcut-help">
-            스페이스 GO · Esc 정지 (두 번: 패닉) · P 일시정지 · F 페이드 아웃 · ↑↓ 대기 큐 · 1~9 마커 · M 마커 추가 · R 다시
+            스페이스 GO · Esc 정지 (두 번: 패닉) · P 일시정지 · F 페이드 아웃 · ↑↓ 대기 큐 · 1~9 마커
+            {!performanceMode && ' · M 마커 추가'} · R 다시
           </p>
         )}
       </aside>
@@ -84,8 +87,26 @@ export function PlayScreen() {
 /** 패닉: 다른 버튼과 떨어진 맨 위에 */
 function PanicBar() {
   const panic = usePlayerStore((s) => s.panic)
+  const performanceMode = useSettingsStore((s) => s.performanceMode)
+  const update = useSettingsStore((s) => s.update)
+
+  const toggle = () => {
+    if (!performanceMode) update({ performanceMode: true })
+    // 끌 때는 실수로 풀리지 않게 한 번 더 묻는다
+    else if (window.confirm('공연 모드를 끌까요?\n큐 삭제, 순서 변경, 편집이 다시 가능해집니다.')) update({ performanceMode: false })
+  }
+
   return (
     <div className="panic-bar">
+      <button
+        className={`perf-switch${performanceMode ? ' on' : ''}`}
+        role="switch"
+        aria-checked={performanceMode}
+        onClick={toggle}
+      >
+        <span className="perf-knob" />
+        {performanceMode ? '🔒 공연 모드' : '공연 모드'}
+      </button>
       <button className="btn-panic" onClick={panic}>
         패닉 · 전체 정지
       </button>

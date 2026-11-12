@@ -34,6 +34,8 @@ export class AudioEngine {
   private output: Output | null = null
   private analyser: AnalyserNode | null = null
   private outputMode: OutputMode = 'auto'
+  /** AudioContext와 출력이 한 번이라도 함께 정상이었는지 (그 전에는 재연결 안내를 띄우지 않는다) */
+  private everRunning = false
   private masterDb = 0
 
   private readonly buffers = new Map<string, AudioBuffer>()
@@ -60,6 +62,10 @@ export class AudioEngine {
       for (const type of GESTURE_EVENTS) {
         window.addEventListener(type, onGesture, { capture: true, passive: true })
       }
+      // 화면이 다시 보이면 상태와 위치 표시를 실제 값으로 다시 맞춘다
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') this.emit()
+      })
     }
   }
 
@@ -90,8 +96,7 @@ export class AudioEngine {
 
     this.master = ctx.createGain()
     this.master.gain.value = dbToGain(this.masterDb)
-    this.output = createOutput(ctx, this.outputMode)
-    this.master.connect(this.output.input)
+    this.attachOutput(createOutput(ctx, this.outputMode))
 
     ctx.addEventListener('statechange', () => this.emit())
     this.emit()
@@ -99,6 +104,12 @@ export class AudioEngine {
   }
 
   // ───────────────────────── 출력 경로 ─────────────────────────
+
+  private attachOutput(output: Output): void {
+    this.output = output
+    this.master!.connect(output.input)
+    output.onChange = () => this.emit()
+  }
 
   /**
    * 출력 경로 강제 변경 (숨은 옵션: 문제 비교용). 사용자 탭 안에서 호출할 것.
@@ -111,9 +122,8 @@ export class AudioEngine {
       if (kind !== this.output.kind) {
         this.master.disconnect(this.output.input)
         this.output.dispose()
-        this.output = createOutput(this.ctx, mode)
-        this.master.connect(this.output.input)
-        this.output.unlock()
+        this.attachOutput(createOutput(this.ctx, mode))
+        this.output!.unlock()
       }
     }
     this.emit()
@@ -407,6 +417,8 @@ export class AudioEngine {
   }
 
   private buildSnapshot(): EngineSnapshot {
+    const healthy = !!this.ctx && this.ctx.state === 'running' && !(this.output?.isPaused() ?? false)
+    if (healthy) this.everRunning = true
     const now = this.ctx?.currentTime ?? 0
     let position = 0
     let audioId: string | null = null
@@ -424,6 +436,7 @@ export class AudioEngine {
       contextState: (this.ctx?.state ?? 'none') as ContextState,
       outputMode: this.outputMode,
       outputKind: this.output?.kind ?? null,
+      needsReconnect: this.everRunning && !healthy,
     }
   }
 

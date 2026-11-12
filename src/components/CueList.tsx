@@ -17,6 +17,8 @@ interface Props {
   onMemo: (cue: Cue) => void
   onDuplicate: (cue: Cue) => void
   onDelete: (cue: Cue) => void
+  /** 공연 모드: 순서 변경과 메뉴(이름 변경, 메모, 복제, 삭제)를 막는다. 탭해서 대기 큐 고르기는 된다 */
+  locked?: boolean
 }
 
 interface DragState {
@@ -147,6 +149,9 @@ export function CueList(props: Props) {
             style={translate ? { transform: `translateY(${translate}px)` } : undefined}
           >
             <div className="play-row-main">
+              {props.locked ? (
+                <span className="drag-handle locked" aria-hidden="true" />
+              ) : (
               <button
                 className="drag-handle"
                 aria-label="끌어서 순서 바꾸기"
@@ -157,6 +162,7 @@ export function CueList(props: Props) {
               >
                 ≡
               </button>
+              )}
               <button className="play-row-body" onClick={() => props.onSelect(cue.id)}>
                 <span className="play-no">{i + 1}</span>
                 <span className="play-text">
@@ -175,16 +181,18 @@ export function CueList(props: Props) {
                   <span className="play-len">{len === null ? '-' : formatDuration(len)}</span>
                 </span>
               </button>
-              <button
-                className="row-menu-btn"
-                aria-label="큐 메뉴"
-                aria-expanded={menuId === cue.id}
-                onClick={() => setMenuId(menuId === cue.id ? null : cue.id)}
-              >
-                ⋯
-              </button>
+              {!props.locked && (
+                <button
+                  className="row-menu-btn"
+                  aria-label="큐 메뉴"
+                  aria-expanded={menuId === cue.id}
+                  onClick={() => setMenuId(menuId === cue.id ? null : cue.id)}
+                >
+                  ⋯
+                </button>
+              )}
             </div>
-            {menuId === cue.id && (
+            {menuId === cue.id && !props.locked && (
               <div className="row-menu">
                 <button className="btn" onClick={() => { setMenuId(null); props.onRename(cue) }}>
                   이름 변경
