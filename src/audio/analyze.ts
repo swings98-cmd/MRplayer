@@ -47,3 +47,23 @@ export async function analyzeAudio(data: ArrayBuffer): Promise<AudioAnalysis> {
 
   return { duration: buf.duration, peaks, peaksPerSecond: PEAKS_PER_SECOND }
 }
+
+/**
+ * 디코딩만 시험해 본다 (공연 전 점검용). 결과는 바로 버린다.
+ * 메모리를 적게 쓰도록 낮은 샘플레이트로 디코딩하고, 안 되면 44.1kHz로 다시 시도한다.
+ * @returns 길이(초). 디코딩할 수 없으면 예외
+ */
+export async function testDecode(data: ArrayBuffer): Promise<number> {
+  const OAC: typeof OfflineAudioContext =
+    window.OfflineAudioContext ??
+    (window as unknown as { webkitOfflineAudioContext: typeof OfflineAudioContext }).webkitOfflineAudioContext
+  let ctx: OfflineAudioContext
+  try {
+    ctx = new OAC(1, 1, 22050)
+  } catch {
+    ctx = new OAC(1, 1, 44100)
+  }
+  const buf = await decodeAudio(ctx, data)
+  if (!(buf.duration > 0)) throw new Error('길이가 0인 음원입니다')
+  return buf.duration
+}

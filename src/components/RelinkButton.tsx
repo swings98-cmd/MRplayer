@@ -1,5 +1,6 @@
 /** "음원 없음"인 큐에 파일을 다시 지정하는 버튼 (설정만 가져온 프로젝트) */
 import { useRef, useState } from 'react'
+import { useEngineState } from './useEngine.ts'
 import { AUDIO_ACCEPT, useProjectStore } from '../store/projectStore.ts'
 import { useStorageStore } from '../store/storageStore.ts'
 
@@ -14,11 +15,18 @@ export function RelinkButton({ cueId, className = 'btn btn-primary', label = '�
   const refreshEstimate = useStorageStore((s) => s.refreshEstimate)
   const input = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
+  // 재생 안정성: 재생 중에는 새 음원 디코딩을 하지 않는다
+  const playing = useEngineState() !== 'stopped'
 
   return (
     <>
-      <button className={className} disabled={busy} onClick={() => input.current?.click()}>
-        {busy ? '불러오는 중…' : label}
+      <button
+        className={className}
+        disabled={busy || playing}
+        title={playing ? '재생 중에는 지정할 수 없습니다' : undefined}
+        onClick={() => input.current?.click()}
+      >
+        {busy ? '불러오는 중…' : playing ? `${label} (정지 후)` : label}
       </button>
       <input
         ref={input}

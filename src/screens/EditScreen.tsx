@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { FileDropZone } from '../components/FileDropZone.tsx'
 import { formatBytes } from '../components/format.ts'
 import { RelinkButton } from '../components/RelinkButton.tsx'
+import { useEngineState } from '../components/useEngine.ts'
 import { usePlayerStore } from '../store/playerStore.ts'
 import { useProjectStore, type ImportResult } from '../store/projectStore.ts'
 import { useStorageStore } from '../store/storageStore.ts'
@@ -14,6 +15,7 @@ export function EditScreen() {
   const { selectedCueId, select } = usePlayerStore()
   const refreshEstimate = useStorageStore((s) => s.refreshEstimate)
   const [result, setResult] = useState<ImportResult | null>(null)
+  const playing = useEngineState() !== 'stopped'
 
   if (error) return <p className="error-text">{error}</p>
   if (!ready) return <p className="muted">불러오는 중…</p>
@@ -28,7 +30,7 @@ export function EditScreen() {
   }
 
   return (
-    <FileDropZone onFiles={runImport} disabled={!!importing}>
+    <FileDropZone onFiles={runImport} disabled={!!importing || playing}>
       <div className="page page-wide">
         <div className="editor-head">
           <select

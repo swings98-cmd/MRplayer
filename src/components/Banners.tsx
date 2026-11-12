@@ -1,4 +1,5 @@
 import { audioEngine } from '../audio/index.ts'
+import { useAppErrors } from '../store/appErrors.ts'
 import { applyUpdate, dismissUpdate, useAppUpdate } from '../store/appUpdate.ts'
 import { useEngineState, useNeedsReconnect } from './useEngine.ts'
 
@@ -10,6 +11,24 @@ export function ReconnectBanner() {
     <button className="banner banner-reconnect" onClick={() => audioEngine.unlock()}>
       🔇 오디오 연결이 끊겼습니다 — <b>탭해서 오디오 다시 연결</b>
     </button>
+  )
+}
+
+/** 저장 실패, 예상하지 못한 오류 등 */
+export function AppErrorBanner() {
+  const { errors, dismiss } = useAppErrors()
+  if (errors.length === 0) return null
+  return (
+    <div className="app-errors" role="alert">
+      {errors.map((e) => (
+        <div key={e.id} className="banner banner-error">
+          <span>⚠️ {e.text}</span>
+          <button className="btn small-btn" onClick={() => dismiss(e.id)}>
+            닫기
+          </button>
+        </div>
+      ))}
+    </div>
   )
 }
 

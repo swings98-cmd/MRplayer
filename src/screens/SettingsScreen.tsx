@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import type { OutputMode } from '../audio/index.ts'
 import { formatBytes } from '../components/format.ts'
 import { useEngineSnapshot } from '../components/useEngine.ts'
@@ -7,6 +7,7 @@ import { buildInfo, checkOffline, useAppUpdate, type OfflineStatus } from '../st
 import { useStorageStore, type PersistStatus } from '../store/storageStore.ts'
 import { useProjectStore } from '../store/projectStore.ts'
 import { useWakeLock } from '../store/wakeLock.ts'
+import { PreflightDialog } from './PreflightDialog.tsx'
 
 const OFFLINE_TEXT: Record<OfflineStatus, string> = {
   checking: '확인 중…',
@@ -47,6 +48,7 @@ export function SettingsScreen() {
   const wake = useWakeLock()
   const { offline, cachedFiles, needRefresh } = useAppUpdate()
   const build = buildInfo()
+  const [preflight, setPreflight] = useState(false)
   const project = useProjectStore((s) => s.projects.find((p) => p.id === s.currentProjectId))
   const when = (t: number | undefined) => (t ? new Date(t).toLocaleString('ko-KR') : '없음')
   const outputKind = useEngineSnapshot().outputKind
@@ -60,6 +62,18 @@ export function SettingsScreen() {
 
   return (
     <div className="page">
+      <section className="card preflight-card">
+        <h2>공연 전 점검</h2>
+        <p className="muted small">
+          현재 프로젝트의 모든 큐가 열리는지, 음원이 빠진 큐가 없는지, 오프라인 준비와 저장 공간 보호가 됐는지 한 번에
+          확인합니다.
+        </p>
+        <button className="btn btn-primary wide" onClick={() => setPreflight(true)}>
+          공연 전 점검
+        </button>
+      </section>
+      {preflight && <PreflightDialog onClose={() => setPreflight(false)} />}
+
       <section className="card">
         <h2>재생</h2>
         <p className="setting-label">GO를 눌렀을 때 재생 중인 큐가 있으면</p>

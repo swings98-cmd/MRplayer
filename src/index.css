@@ -1521,3 +1521,105 @@ button {
 .missing-card {
   border-color: #6b2a2a;
 }
+
+/* ───────── 오류/안내 ───────── */
+.app-errors {
+  display: flex;
+  flex-direction: column;
+}
+
+.banner-error {
+  justify-content: space-between;
+  text-align: left;
+  color: #ffd6d6;
+  background: #4a1616;
+  border-bottom: 1px solid #6b2a2a;
+}
+
+.banner-error .btn {
+  flex: 0 0 auto;
+}
+
+.notice-banner {
+  padding: 10px 12px;
+  color: #1a1a1a;
+  font-weight: 700;
+  background: #ffc94d;
+}
+
+.error-card {
+  max-width: 700px;
+  margin: 24px auto;
+  border-color: #6b2a2a;
+}
+
+/* ───────── 공연 전 점검 ───────── */
+.preflight-summary {
+  margin: 8px 0 12px;
+  padding: 10px 14px;
+  font-size: 20px;
+  font-weight: 800;
+  border-radius: 12px;
+}
+
+.preflight-summary.ok {
+  color: #0b1a10;
+  background: #3ccf7a;
+}
+
+.preflight-summary.warn {
+  color: #1a1a1a;
+  background: #ffc94d;
+}
+
+.preflight-summary.fail {
+  color: #fff;
+  background: #b3261e;
+}
+
+.preflight-list {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+}
+
+.preflight-list > li {
+  display: flex;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.preflight-list > li p {
+  margin: 2px 0;
+  color: var(--muted);
+}
+
+.preflight-list ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 15px;
+}
+
+.check-icon {
+  flex: 0 0 28px;
+  font-size: 22px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.check-ok .check-icon {
+  color: #3ccf7a;
+}
+
+.check-warn .check-icon {
+  color: #ffc94d;
+}
+
+.check-fail .check-icon {
+  color: #ff6b6b;
+}
+
+.check-manual .check-icon {
+  color: var(--muted);
+}

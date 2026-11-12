@@ -4,6 +4,7 @@
  */
 import { create } from 'zustand'
 import { analyzeAudio, audioEngine } from '../audio/index.ts'
+import { describeSaveError, isQuotaError, QUOTA_MESSAGE, reportError } from './appErrors.ts'
 import * as db from './db.ts'
 import type { AudioMeta, Cue, CuePatch, Marker, Project } from './types.ts'
 
@@ -130,7 +131,11 @@ function flushPending(): Promise<void> {
       try {
         await db.saveCues(projectId, cues)
       } catch (err) {
-        console.error('큐 저장 실패', err)
+        // 저장하지 못한 변경은 버리지 않고 다시 대기열에 넣어 잠시 뒤 다시 시도한다
+        for (const cue of cues) if (!pending.has(cue.id)) pending.set(cue.id, { projectId, cue })
+        reportError(`큐 설정을 저장하지 못했습니다: ${describeSaveError(err)} (5초 뒤 다시 시도합니다)`)
+        if (saveTimer) clearTimeout(saveTimer)
+        saveTimer = setTimeout(() => void flushPending(), 5000)
       }
     }
   })
@@ -248,9 +253,19 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       const result: ImportResult = { imported: 0, failed: [] }
       if (!projectId || files.length === 0 || get().importing) return result
 
+      // 재생 안정성: 재생 중에는 큰 파일 디코딩을 하지 않는다
+      if (audioEngine.getSnapshot().state !== 'stopped') {
+        result.failed.push(...files.map((f) => ({ fileName: f.name, reason: '재생 중에는 불러올 수 없습니다 (정지 후 다시)' })))
+        return result
+      }
       set({ importing: { done: 0, total: files.length, current: '' } })
+      let outOfSpace = false
       try {
         for (const [i, file] of files.entries()) {
+          if (outOfSpace) {
+            result.failed.push({ fileName: file.name, reason: '저장 공간 부족으로 건너뜀' })
+            continue
+          }
           set({ importing: { done: i, total: files.length, current: file.name } })
           if (!isSupportedFile(file)) {
             result.failed.push({ fileName: file.name, reason: '지원하지 않는 형식' })
@@ -258,7 +273,13 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           }
           try {
             // 한 파일씩 순서대로 처리해서 메모리를 아낀다
-            const analysis = await analyzeAudio(await file.arrayBuffer())
+            let analysis
+            try {
+              analysis = await analyzeAudio(await file.arrayBuffer())
+            } catch (err) {
+              result.failed.push({ fileName: file.name, reason: `디코딩 실패 — 파일이 손상되었거나 지원하지 않는 형식입니다 (${message(err)})` })
+              continue
+            }
             const meta: AudioMeta = {
               id: newId(),
               fileName: file.name,
@@ -289,7 +310,12 @@ export const useProjectStore = create<ProjectState>((set, get) => {
             }
             result.imported++
           } catch (err) {
-            result.failed.push({ fileName: file.name, reason: `디코딩 실패 (${message(err)})` })
+            if (isQuotaError(err)) {
+              outOfSpace = true
+              result.failed.push({ fileName: file.name, reason: QUOTA_MESSAGE })
+            } else {
+              result.failed.push({ fileName: file.name, reason: `저장 실패 (${message(err)})` })
+            }
           }
         }
       } finally {
@@ -443,6 +469,9 @@ export const useProjectStore = create<ProjectState>((set, get) => {
 /** 큐의 원본 파일을 읽어 오디오 엔진에 올린다 (이미 올라가 있으면 바로 끝) */
 export async function loadCueAudio(cue: Cue): Promise<AudioBuffer> {
   if (audioEngine.isLoaded(cue.audioId)) return audioEngine.load(cue.audioId, new ArrayBuffer(0))
+  // 이미 디코딩 중이면 원본 파일을 다시 읽지 않고 그 작업을 기다린다 (메모리 절약)
+  const pending = audioEngine.loadingPromise(cue.audioId)
+  if (pending) return pending
   const blob = await db.getAudioBlob(cue.audioId)
   if (!blob) throw new Error('저장된 음원 파일을 찾을 수 없습니다')
   return audioEngine.load(cue.audioId, await blob.arrayBuffer())

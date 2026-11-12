@@ -4,6 +4,7 @@
  */
 import { create } from 'zustand'
 import { audioEngine, type OutputMode } from '../audio/index.ts'
+import { describeSaveError, reportError } from './appErrors.ts'
 import * as db from './db.ts'
 
 /** GO를 눌렀을 때 이미 재생 중인 큐 처리 */
@@ -91,7 +92,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = setTimeout(() => {
       saveTimer = null
-      void db.setSetting(KEY, JSON.stringify(pick(get()))).catch(() => {})
+      void db
+        .setSetting(KEY, JSON.stringify(pick(get())))
+        .catch((err: unknown) => reportError(`설정을 저장하지 못했습니다: ${describeSaveError(err)}`))
     }, SAVE_DELAY_MS)
   },
 }))

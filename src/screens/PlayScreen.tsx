@@ -15,7 +15,8 @@ const canKeyboard = typeof window !== 'undefined' && window.matchMedia?.('(point
 export function PlayScreen() {
   usePlayShortcuts()
   const { ready, cues, audio, updateCue, duplicateCue, deleteCue, moveCue } = useProjectStore()
-  const { standbyCueId, playingCueId, readyAudioIds, waitingCueId, error, setStandby, clearError } = usePlayerStore()
+  const { standbyCueId, playingCueId, readyAudioIds, waitingCueId, error, notice, failedAudio, setStandby, clearError } =
+    usePlayerStore()
   const playState = useEngineState()
   const performanceMode = useSettingsStore((s) => s.performanceMode)
 
@@ -49,7 +50,13 @@ export function PlayScreen() {
             </button>
           </div>
         )}
+        {notice && (
+          <div className="notice-banner" role="status">
+            {notice}
+          </div>
+        )}
         <CueList
+          failedAudio={failedAudio}
           locked={performanceMode}
           cues={cues}
           audio={audio}

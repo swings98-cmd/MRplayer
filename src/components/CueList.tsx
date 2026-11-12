@@ -12,6 +12,8 @@ interface Props {
   playState: PlaybackState
   readyAudioIds: Record<string, true>
   waitingId: string | null
+  /** 디코딩에 실패한 음원: audioId → 이유 */
+  failedAudio?: Record<string, string>
   onSelect: (id: string) => void
   onMove: (from: number, to: number) => void
   onRename: (cue: Cue) => void
@@ -169,6 +171,9 @@ export function CueList(props: Props) {
                 <span className="play-text">
                   <span className="play-name">{cue.name}</span>
                   {cue.memo && <span className="play-memo">{cue.memo}</span>}
+                  {meta && props.failedAudio?.[cue.audioId] && (
+                    <span className="play-missing">음원 손상: {props.failedAudio[cue.audioId]}</span>
+                  )}
                   {!meta && (
                     <span className="play-missing">
                       음원 없음{cue.missingAudio ? `: ${cue.missingAudio.fileName}` : ''}

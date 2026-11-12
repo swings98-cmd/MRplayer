@@ -164,6 +164,32 @@ export class AudioEngine {
     return this.buffers.has(audioId)
   }
 
+  /** 디코딩 중이면 그 작업 (같은 원본을 다시 읽지 않도록) */
+  loadingPromise(audioId: string): Promise<AudioBuffer> | undefined {
+    return this.loading.get(audioId)
+  }
+
+  /**
+   * 디코딩 오디오가 차지하는 메모리(바이트).
+   * cached: 캐시에 있는 것, voicesOnly: 캐시에서 내렸지만 아직 소리(페이드 중 등)가 붙잡고 있는 것
+   */
+  memoryInUse(): { cached: number; voicesOnly: number; byId: Record<string, number> } {
+    const byId: Record<string, number> = {}
+    let cached = 0
+    for (const [id, b] of this.buffers) {
+      byId[id] = b.length * b.numberOfChannels * 4
+      cached += byId[id]
+    }
+    let voicesOnly = 0
+    for (const v of this.voices) if (!this.buffers.has(v.audioId)) voicesOnly += v.bufferBytes
+    return { cached, voicesOnly, byId }
+  }
+
+  /** 디코딩된 오디오가 될 샘플레이트 (AudioContext가 없으면 48kHz로 본다) */
+  get decodeSampleRate(): number {
+    return this.ctx?.sampleRate ?? 48000
+  }
+
   /** 디코딩해서 캐시에 올라가 있는 음원 id 목록 */
   loadedIds(): string[] {
     return [...this.buffers.keys()]
@@ -305,7 +331,8 @@ export class AudioEngine {
 
   /**
    * 위치 이동(초, 파일 기준). 재생 중이면 그 지점부터 다시 재생하고,
-   * 일시정지 중이면 이어 재생할 위치만 바꾼다. 정지 상태면 무시.
+   * 일시정지 중이면 이어 재생할 위치만 바꾼다. 정지 상태와 페이드 아웃 중이면 무시
+   * (페이드 아웃 중에 옮기면 원래 볼륨으로 다시 나와 페이드가 풀리므로).
    */
   seek(position: number): void {
     if (this.state === 'paused' && this.paused) {
@@ -316,7 +343,7 @@ export class AudioEngine {
       this.emit()
       return
     }
-    if ((this.state === 'playing' || this.state === 'fading') && this.currentCue) {
+    if (this.state === 'playing' && this.currentCue) {
       this.play(this.currentCue, position, { ignoreFadeIn: this.ignoreFadeIn })
     }
   }
@@ -397,6 +424,10 @@ export class AudioEngine {
   private releaseCurrent(seconds: number): void {
     const v = this.current
     this.current = null
+    if (seconds > DECLICK) {
+      // 길게 페이드되는 이전 소리는 하나만 둔다 (GO 연타로 여러 소리가 겹쳐 커지는 것 방지)
+      for (const other of this.voices) if (other !== v && other.isReleasing) other.release(DECLICK)
+    }
     v?.release(seconds)
   }
 

@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { useEngineState } from '../components/useEngine.ts'
 import { TransferPanel } from './TransferPanel.tsx'
 import { isEngineActive } from '../store/playerStore.ts'
 import { AUDIO_ACCEPT, useProjectStore, type ImportResult } from '../store/projectStore.ts'
@@ -22,6 +23,7 @@ export function ProjectPanel({ result, setResult, onImport }: Props) {
     useProjectStore()
   const refreshEstimate = useStorageStore((s) => s.refreshEstimate)
   const fileInput = useRef<HTMLInputElement>(null)
+  const playing = useEngineState() !== 'stopped'
 
   const project = projects.find((p) => p.id === currentProjectId)
   const sorted = [...projects].sort((a, b) => a.name.localeCompare(b.name, 'ko'))
@@ -95,9 +97,14 @@ export function ProjectPanel({ result, setResult, onImport }: Props) {
 
         <section className="card">
           <h2>음원 불러오기</h2>
-          <button className="btn btn-primary wide" disabled={!!importing} onClick={() => fileInput.current?.click()}>
+          <button
+            className="btn btn-primary wide"
+            disabled={!!importing || playing}
+            onClick={() => fileInput.current?.click()}
+          >
             음원 파일 선택 (여러 개 가능)
           </button>
+          {playing && <p className="warn-text small">재생 중에는 음원을 불러올 수 없습니다. 정지한 뒤 다시 시도하세요.</p>}
           <input
             ref={fileInput}
             type="file"

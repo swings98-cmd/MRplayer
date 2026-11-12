@@ -1,10 +1,12 @@
 import { useEffect } from 'react'
-import { ReconnectBanner, UpdateBanner } from './components/Banners.tsx'
+import { AppErrorBanner, ReconnectBanner, UpdateBanner } from './components/Banners.tsx'
+import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 import { TabBar } from './components/TabBar.tsx'
 import { usePerformanceGuards } from './components/usePerformanceGuards.ts'
 import { EditScreen } from './screens/EditScreen.tsx'
 import { PlayScreen } from './screens/PlayScreen.tsx'
 import { SettingsScreen } from './screens/SettingsScreen.tsx'
+import { installGlobalErrorHandlers } from './store/appErrors.ts'
 import { initServiceWorker } from './store/appUpdate.ts'
 import { initMediaSession } from './store/mediaSession.ts'
 import { useProjectStore } from './store/projectStore.ts'
@@ -19,6 +21,7 @@ export default function App() {
   usePerformanceGuards(performanceMode)
 
   useEffect(() => {
+    installGlobalErrorHandlers()
     initServiceWorker()
     void useSettingsStore.getState().init()
     void useStorageStore.getState().init()
@@ -35,12 +38,25 @@ export default function App() {
   return (
     <div className="app">
       <ReconnectBanner />
+      <AppErrorBanner />
       <UpdateBanner />
       <TabBar />
       <main className="screen">
-        {tab === 'play' && <PlayScreen />}
-        {tab === 'edit' && <EditScreen />}
-        {tab === 'settings' && <SettingsScreen />}
+        {tab === 'play' && (
+          <ErrorBoundary name="플레이">
+            <PlayScreen />
+          </ErrorBoundary>
+        )}
+        {tab === 'edit' && (
+          <ErrorBoundary name="편집">
+            <EditScreen />
+          </ErrorBoundary>
+        )}
+        {tab === 'settings' && (
+          <ErrorBoundary name="설정">
+            <SettingsScreen />
+          </ErrorBoundary>
+        )}
       </main>
     </div>
   )

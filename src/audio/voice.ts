@@ -8,7 +8,7 @@
  * env와 ctl을 나눠서, 정지·페이드 아웃이 큐 볼륨 곡선 예약을 건드리지 않게 한다.
  * ctl의 현재 값은 직접 계산해서 알고 있으므로 연속 조작에도 값이 튀지 않는다.
  */
-import { scheduleEnvelope, type CueRange } from './envelope.ts'
+import { envelopeAt, scheduleEnvelope, type CueRange } from './envelope.ts'
 
 /** 시작/정지 때 딸깍 소리를 없애는 짧은 페이드 길이(초) */
 export const DECLICK = 0.01
@@ -35,6 +35,9 @@ export class Voice {
   private readonly env: GainNode
   private readonly ctl: GainNode
   private ctlRamp: Ramp
+  /** 지금 예약된 볼륨 곡선 (재예약 때 현재 값을 알기 위해) */
+  private range: CueRange
+  private readonly buffer: AudioBuffer
   private stopAt: number | null = null
   private ended = false
 
@@ -52,6 +55,8 @@ export class Voice {
     this.audioId = audioId
     this.offset = offset
     this.end = range.outPoint
+    this.range = range
+    this.buffer = buffer
 
     const when = ctx.currentTime
     this.startTime = when
@@ -80,6 +85,16 @@ export class Voice {
     return this.ended
   }
 
+  /** 정지하려고 줄어드는 중인지 (release가 불렸는지) */
+  get isReleasing(): boolean {
+    return this.stopAt !== null
+  }
+
+  /** 이 Voice가 붙잡고 있는 디코딩 오디오 크기(바이트) */
+  get bufferBytes(): number {
+    return this.buffer.length * this.buffer.numberOfChannels * 4
+  }
+
   /**
    * 볼륨 곡선(페이드, 큐 볼륨)만 바꾼다. 재생은 끊지 않는다.
    * 인/아웃 포인트는 바꿀 수 없으므로(이미 시작한 source의 길이는 고정) 같은 값이어야 한다.
@@ -87,7 +102,10 @@ export class Voice {
   reschedule(range: CueRange): void {
     if (this.ended) return
     const now = this.ctx.currentTime
-    scheduleEnvelope(this.env.gain, range, this.position(now), now)
+    const pos = this.position(now)
+    // 지금 값에서 새 곡선으로 짧게 이어 붙여 딸깍 소리를 막는다
+    scheduleEnvelope(this.env.gain, range, pos, now, envelopeAt(this.range, pos))
+    this.range = range
   }
 
   /** 현재 파일 위치(초) */

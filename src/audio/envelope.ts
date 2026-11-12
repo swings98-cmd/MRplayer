@@ -51,7 +51,7 @@ function breakpoints(r: CueRange, from: number): number[] {
   const xs = [r.outPoint]
   if (r.fadeIn > 0) xs.push(r.inPoint + r.fadeIn)
   if (r.fadeOut > 0) xs.push(r.outPoint - r.fadeOut)
-  if (r.fadeIn > 0 && r.fadeOut > 0) {
+  if (r.fadeIn > 0 && r.fadeOut > 0 && r.fadeIn + r.fadeOut > r.outPoint - r.inPoint) {
     // 페이드 인과 페이드 아웃이 겹칠 때 두 직선이 만나는 지점
     xs.push((r.outPoint * r.fadeIn + r.inPoint * r.fadeOut) / (r.fadeIn + r.fadeOut))
   }
@@ -59,15 +59,25 @@ function breakpoints(r: CueRange, from: number): number[] {
   return sorted.filter((x, i) => i === 0 || x - sorted[i - 1] > EPS)
 }
 
+/** 재생 중 볼륨 곡선을 바꿀 때 이전 값에서 새 곡선으로 이어지는 시간(초). 딸깍 소리 방지 */
+export const GLIDE_SECONDS = 0.02
+
 /**
  * param에 볼륨 곡선을 예약한다.
  * @param from 재생을 시작하는 파일 위치(초)
  * @param when from 위치가 소리 나는 AudioContext 시각
+ * @param glideFrom 주면 이 값에서 시작해 GLIDE_SECONDS 동안 새 곡선으로 이어진다 (재생 중 설정 변경)
  */
-export function scheduleEnvelope(param: AudioParam, r: CueRange, from: number, when: number): void {
+export function scheduleEnvelope(param: AudioParam, r: CueRange, from: number, when: number, glideFrom?: number): void {
   param.cancelScheduledValues(0)
-  param.setValueAtTime(envelopeAt(r, from), when)
-  for (const x of breakpoints(r, from)) {
-    param.linearRampToValueAtTime(envelopeAt(r, x), when + (x - from))
+  if (glideFrom === undefined) {
+    param.setValueAtTime(envelopeAt(r, from), when)
+    for (const x of breakpoints(r, from)) param.linearRampToValueAtTime(envelopeAt(r, x), when + (x - from))
+    return
   }
+  // 이전 값에서 시작해 짧게 이어 붙인 뒤 새 곡선을 따른다
+  const joinX = Math.min(r.outPoint, from + GLIDE_SECONDS)
+  param.setValueAtTime(glideFrom, when)
+  param.linearRampToValueAtTime(envelopeAt(r, joinX), when + (joinX - from))
+  for (const x of breakpoints(r, joinX)) param.linearRampToValueAtTime(envelopeAt(r, x), when + (x - from))
 }
