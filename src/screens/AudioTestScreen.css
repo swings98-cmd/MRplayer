@@ -1,0 +1,122 @@
+/* ⚠️ 임시 확인용 화면 스타일 — AudioTestScreen.tsx와 함께 지운다 */
+.at {
+  max-width: 980px;
+  margin: 0 auto;
+}
+.at-warn {
+  margin: 0 0 12px;
+  color: var(--accent);
+  font-weight: 700;
+}
+.at-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.at-card h2 {
+  margin: 0 0 10px;
+  font-size: 20px;
+}
+.at-muted {
+  color: var(--muted);
+  margin: 8px 0 0;
+}
+.at-file {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60px;
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.at-file input {
+  display: none;
+}
+.at-status {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+  margin: 0;
+}
+.at-status dt {
+  color: var(--muted);
+}
+.at-status dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  word-break: break-all;
+}
+.at-big {
+  font-size: 28px;
+  font-weight: 800;
+}
+.at-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+.at-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 16px;
+}
+.at-field input {
+  font: inherit;
+  font-size: 20px;
+  min-height: 52px;
+  padding: 0 12px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.at-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.at-buttons button {
+  flex: 1 1 150px;
+  min-height: 60px;
+  font-size: 19px;
+  font-weight: 700;
+  background: #20242e;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+}
+.at-buttons button:disabled {
+  opacity: 0.4;
+}
+.at-buttons button.go {
+  border-color: #3ccf7a;
+}
+.at-buttons button.panic {
+  border-color: #ff5d5d;
+  color: #ff8a8a;
+}
+.at-buttons button.selected {
+  border-color: var(--accent);
+  background: #241a12;
+}
+.at-log {
+  margin: 0;
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 14px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+  -webkit-user-select: text;
+}

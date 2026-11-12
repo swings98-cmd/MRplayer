@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 
-export type Tab = 'play' | 'edit'
+// 'test'는 임시 오디오 엔진 확인 화면 (확인 후 삭제)
+export type Tab = 'play' | 'edit' | 'test'
 
 interface UiState {
   tab: Tab
