@@ -175,7 +175,7 @@ export function ExportDialog({ initialCueId, onClose }: Props) {
 
             <p className="setting-label">
               추출할 큐 ({items.length}개)
-              <button className="link-btn" onClick={() => setSelected(cues.map((c) => c.id))}>
+              <button className="link-btn" onClick={() => setSelected(cues.filter((c) => audio[c.audioId]).map((c) => c.id))}>
                 모두 선택
               </button>
               <button className="link-btn" onClick={() => setSelected([])}>
@@ -188,7 +188,12 @@ export function ExportDialog({ initialCueId, onClose }: Props) {
                 return (
                   <li key={c.id}>
                     <label className="export-item">
-                      <input type="checkbox" checked={selected.includes(c.id)} onChange={() => toggle(c.id)} />
+                      <input
+                        type="checkbox"
+                        checked={selected.includes(c.id)}
+                        disabled={!audio[c.audioId]}
+                        onChange={() => toggle(c.id)}
+                      />
                       <span className="export-name">
                         {i + 1}. {c.name}
                       </span>
@@ -198,6 +203,7 @@ export function ExportDialog({ initialCueId, onClose }: Props) {
                         </span>
                       )}
                       {row && row.overDb > 0 && <span className="warn-text small">⚠ +{row.overDb.toFixed(1)}dB 깨짐</span>}
+                      {!audio[c.audioId] && <span className="warn-text small">음원 없음</span>}
                     </label>
                   </li>
                 )

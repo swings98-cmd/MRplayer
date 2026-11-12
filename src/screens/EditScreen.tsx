@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { FileDropZone } from '../components/FileDropZone.tsx'
+import { formatBytes } from '../components/format.ts'
+import { RelinkButton } from '../components/RelinkButton.tsx'
 import { usePlayerStore } from '../store/playerStore.ts'
 import { useProjectStore, type ImportResult } from '../store/projectStore.ts'
 import { useStorageStore } from '../store/storageStore.ts'
@@ -50,7 +52,21 @@ export function EditScreen() {
         ) : !cue ? (
           <p className="muted">플레이 화면에서 큐를 탭하거나 위에서 고르세요.</p>
         ) : !meta ? (
-          <p className="error-text">이 큐의 음원 정보를 찾을 수 없습니다.</p>
+          <section className="card missing-card">
+            <h2>음원 없음 · {cue.name}</h2>
+            <p>
+              설정만 가져온 큐라서 이 기기에 맞는 음원이 없습니다.
+              {cue.missingAudio && (
+                <>
+                  {' '}
+                  원래 음원: <b>{cue.missingAudio.fileName}</b> ({cue.missingAudio.duration.toFixed(1)}초,{' '}
+                  {formatBytes(cue.missingAudio.size)})
+                </>
+              )}
+            </p>
+            <p className="muted small">같은 음원 파일을 지정하면 이 파일이 없던 다른 큐들도 함께 연결됩니다.</p>
+            <RelinkButton cueId={cue.id} />
+          </section>
         ) : (
           <CueEditor key={cue.id} cue={cue} meta={meta} />
         )}

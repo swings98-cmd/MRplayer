@@ -1482,3 +1482,42 @@ button {
 .export-results li {
   margin-bottom: 6px;
 }
+
+/* ───────── 내보내기 / 가져오기, 음원 없음 ───────── */
+.transfer-box {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.transfer-box p {
+  margin: 4px 0;
+}
+
+.bar-fill.indeterminate {
+  animation: bar-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes bar-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+.play-missing {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ff8a8a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.missing-card {
+  border-color: #6b2a2a;
+}

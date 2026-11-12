@@ -125,6 +125,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   }
 
   async function preload(cue: Cue): Promise<boolean> {
+    // 음원 없음(설정만 가져온 큐): 다시 지정하기 전에는 준비할 수 없다
+    if (!cue.audioId) return false
     if (audioEngine.isLoaded(cue.audioId)) {
       if (!get().readyAudioIds[cue.audioId]) set({ readyAudioIds: { ...get().readyAudioIds, [cue.audioId]: true } })
       return true
@@ -147,6 +149,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   function startAt(point: StartPoint): void {
     const cue = cues().find((c) => c.id === point.cueId)
     if (!cue) return
+    if (!cue.audioId) {
+      set({ error: `"${cue.name}"은(는) 음원이 없습니다. 큐 메뉴의 "음원 파일 지정"으로 파일을 다시 지정하세요.` })
+      return
+    }
     set({ lastStart: point })
     const start = () => {
       try {
@@ -317,6 +323,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       const i = indexOf(get().standbyCueId)
       if (i < 0) return
       const cue = cues()[i]
+      if (!cue.audioId) {
+        set({ error: `"${cue.name}"은(는) 음원이 없어 재생할 수 없습니다. 큐 메뉴의 "음원 파일 지정"으로 파일을 다시 지정하세요.` })
+        return
+      }
       const next = standbyAfter(i)
       set({ lastStart: { cueId: cue.id, position: cue.inPoint, label: `${cue.name} 처음` } })
 

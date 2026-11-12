@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { TransferPanel } from './TransferPanel.tsx'
 import { isEngineActive } from '../store/playerStore.ts'
 import { AUDIO_ACCEPT, useProjectStore, type ImportResult } from '../store/projectStore.ts'
 import { useStorageStore } from '../store/storageStore.ts'
@@ -134,6 +135,7 @@ export function ProjectPanel({ result, setResult, onImport }: Props) {
           )}
         </section>
 
+        <TransferPanel />
     </>
   )
 }

@@ -36,3 +36,14 @@ export function downloadFile(file: File): void {
   // 다운로드가 시작될 시간을 준 뒤 해제
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
+
+/** 이 파일을 공유 시트로 보낼 수 있는지 (터치 기기에서만 공유 시트를 쓴다) */
+export function canShareFile(file: File): boolean {
+  if (typeof navigator === 'undefined' || typeof navigator.canShare !== 'function') return false
+  if (navigator.maxTouchPoints <= 1) return false
+  try {
+    return navigator.canShare({ files: [file] })
+  } catch {
+    return false
+  }
+}

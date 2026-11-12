@@ -5,6 +5,7 @@ import { useEngineSnapshot } from '../components/useEngine.ts'
 import { PREROLL_CHOICES, useSettingsStore, type GoMode } from '../store/settingsStore.ts'
 import { buildInfo, checkOffline, useAppUpdate, type OfflineStatus } from '../store/appUpdate.ts'
 import { useStorageStore, type PersistStatus } from '../store/storageStore.ts'
+import { useProjectStore } from '../store/projectStore.ts'
 import { useWakeLock } from '../store/wakeLock.ts'
 
 const OFFLINE_TEXT: Record<OfflineStatus, string> = {
@@ -46,6 +47,8 @@ export function SettingsScreen() {
   const wake = useWakeLock()
   const { offline, cachedFiles, needRefresh } = useAppUpdate()
   const build = buildInfo()
+  const project = useProjectStore((s) => s.projects.find((p) => p.id === s.currentProjectId))
+  const when = (t: number | undefined) => (t ? new Date(t).toLocaleString('ko-KR') : '없음')
   const outputKind = useEngineSnapshot().outputKind
 
   useEffect(() => {
@@ -170,6 +173,26 @@ export function SettingsScreen() {
           <dd>
             {formatBuildTime(build.time)} 빌드{build.commit && ` (${build.commit})`}
             {needRefresh && <span className="warn-text"> · 새 버전 있음</span>}
+          </dd>
+          <dt>마지막 백업</dt>
+          <dd>
+            {project ? (
+              <>
+                <span className={project.lastBackupAt ? '' : 'warn-text'}>
+                  "{project.name}" 전체 내보내기: {when(project.lastBackupAt)}
+                </span>
+                <br />
+                <span className="muted small">설정만 내보내기: {when(project.lastSettingsExportAt)}</span>
+                {!project.lastBackupAt && (
+                  <span className="muted small">
+                    <br />
+                    편집 탭 아래 "프로젝트 · 음원 불러오기" → 전체 내보내기로 백업하세요.
+                  </span>
+                )}
+              </>
+            ) : (
+              '-'
+            )}
           </dd>
           <dt>오프라인</dt>
           <dd className={offline === 'ready' ? 'ok-text' : offline === 'not-ready' ? 'warn-text' : ''}>

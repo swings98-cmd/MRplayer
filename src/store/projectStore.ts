@@ -54,6 +54,15 @@ interface ProjectState {
   duplicateCue(id: string): Promise<string | null>
   /** 순서 변경 */
   moveCue(fromIndex: number, toIndex: number): Promise<void>
+  /** DB에서 프로젝트 목록을 다시 읽는다 (가져오기 후) */
+  refreshProjects(): Promise<void>
+  /** 내보내기 시각 기록 (설정 화면의 "마지막 백업 시각") */
+  markExported(projectId: string, kind: 'full' | 'settings'): Promise<void>
+  /**
+   * 큐의 음원 파일을 다시 지정한다 (설정만 가져와서 "음원 없음"인 큐).
+   * 같은 음원이 없던 다른 큐들도 함께 연결한다. 이름이나 길이가 다르면 warning을 돌려준다.
+   */
+  relinkAudio(cueId: string, file: File): Promise<{ linked: number; warning: string | null }>
   /** 마커 추가 ("마커 N" 자동 이름). 마커는 항상 시간순으로 저장한다. */
   addMarker(cueId: string, time: number): Marker | null
   updateMarker(cueId: string, markerId: string, patch: Partial<Omit<Marker, 'id'>>): void
@@ -369,6 +378,62 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       const cue = get().cues.find((c) => c.id === cueId)
       if (!cue) return
       get().updateCue(cueId, { markers: cue.markers.filter((m) => m.id !== markerId) })
+    },
+
+    async refreshProjects() {
+      set({ projects: await db.listProjects() })
+    },
+
+    async markExported(projectId, kind) {
+      const p = get().projects.find((x) => x.id === projectId)
+      if (!p) return
+      const updated: Project = kind === 'full' ? { ...p, lastBackupAt: Date.now() } : { ...p, lastSettingsExportAt: Date.now() }
+      replaceProject(updated)
+      await db.putProject(updated)
+    },
+
+    async relinkAudio(cueId, file) {
+      const projectId = get().currentProjectId
+      const cue = get().cues.find((c) => c.id === cueId)
+      if (!projectId || !cue) return { linked: 0, warning: null }
+      const analysis = await analyzeAudio(await file.arrayBuffer())
+      const meta: AudioMeta = {
+        id: newId(),
+        fileName: file.name,
+        duration: analysis.duration,
+        peaks: analysis.peaks,
+        peaksPerSecond: analysis.peaksPerSecond,
+        size: file.size,
+        mimeType: file.type,
+        createdAt: Date.now(),
+      }
+      await db.putAudio(meta, file.slice(0, file.size, file.type))
+
+      const expected = cue.missingAudio
+      // 같은 음원이 없던 큐들을 함께 연결
+      const targets = get().cues.filter(
+        (c) => c.id === cueId || (expected && !c.audioId && c.missingAudio?.fileName === expected.fileName),
+      )
+      const ids = new Set(targets.map((c) => c.id))
+      const updatedCues = get().cues.map((c) => {
+        if (!ids.has(c.id)) return c
+        const { missingAudio: _drop, ...rest } = c
+        void _drop
+        return { ...rest, audioId: meta.id }
+      })
+      set({ cues: updatedCues, audio: { ...get().audio, [meta.id]: meta } })
+      await db.saveCues(projectId, updatedCues.filter((c) => ids.has(c.id)))
+
+      let warning: string | null = null
+      if (expected) {
+        const diffs: string[] = []
+        if (expected.fileName !== file.name) diffs.push(`파일 이름(원래 "${expected.fileName}")`)
+        if (Math.abs(expected.duration - meta.duration) > 0.05) {
+          diffs.push(`길이(원래 ${expected.duration.toFixed(1)}초, 지정한 파일 ${meta.duration.toFixed(1)}초)`)
+        }
+        if (diffs.length) warning = `원래 음원과 ${diffs.join(', ')}이(가) 다릅니다. 트림과 마커 위치를 확인하세요.`
+      }
+      return { linked: ids.size, warning }
     },
 
     flushSaves: flushPending,

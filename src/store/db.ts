@@ -61,6 +61,15 @@ export async function getAudioBlob(audioId: string): Promise<Blob | undefined> {
   return (await (await db()).get('audioBlobs', audioId))?.blob
 }
 
+/** 기기에 저장된 모든 음원 정보 (설정만 가져올 때 같은 음원 찾기용) */
+export async function listAudioMeta(): Promise<AudioMeta[]> {
+  return (await db()).getAll('audioMeta')
+}
+
+export async function getAudioMeta(audioId: string): Promise<AudioMeta | undefined> {
+  return (await db()).get('audioMeta', audioId)
+}
+
 export async function getSetting(key: string): Promise<string | undefined> {
   return (await db()).get('settings', key)
 }
@@ -89,6 +98,27 @@ export async function addImportedCue(projectId: string, meta: AudioMeta, blob: B
   ])
   await tx.done
   return updated
+}
+
+/** 음원 하나(정보 + 원본 Blob) 저장 */
+export async function putAudio(meta: AudioMeta, blob: Blob): Promise<void> {
+  const tx = (await db()).transaction(['audioMeta', 'audioBlobs'], 'readwrite')
+  await Promise.all([tx.objectStore('audioMeta').put(meta), tx.objectStore('audioBlobs').put({ id: meta.id, blob })])
+  await tx.done
+}
+
+/** 가져오기를 끝내지 못했을 때 되돌리기: 방금 넣은 음원 지우기 */
+export async function deleteAudio(audioIds: string[]): Promise<void> {
+  const tx = (await db()).transaction(['audioMeta', 'audioBlobs'], 'readwrite')
+  await Promise.all(audioIds.flatMap((id) => [tx.objectStore('audioMeta').delete(id), tx.objectStore('audioBlobs').delete(id)]))
+  await tx.done
+}
+
+/** 가져온 프로젝트와 큐를 한 번에 저장 (중간에 실패하면 아무것도 남지 않는다) */
+export async function putProjectWithCues(project: Project, cues: Cue[]): Promise<void> {
+  const tx = (await db()).transaction(['projects', 'cues'], 'readwrite')
+  await Promise.all([...cues.map((c) => tx.objectStore('cues').put(c)), tx.objectStore('projects').put(project)])
+  await tx.done
 }
 
 /** 이미 저장된 음원을 쓰는 새 큐를 index 위치에 추가 (복제용). 음원은 다시 쓰지 않는다. */

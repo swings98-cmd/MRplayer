@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { PlaybackState } from '../audio/index.ts'
 import type { AudioMeta, Cue } from '../store/types.ts'
 import { formatDuration } from './format.ts'
+import { RelinkButton } from './RelinkButton.tsx'
 
 interface Props {
   cues: Cue[]
@@ -168,6 +169,11 @@ export function CueList(props: Props) {
                 <span className="play-text">
                   <span className="play-name">{cue.name}</span>
                   {cue.memo && <span className="play-memo">{cue.memo}</span>}
+                  {!meta && (
+                    <span className="play-missing">
+                      음원 없음{cue.missingAudio ? `: ${cue.missingAudio.fileName}` : ''}
+                    </span>
+                  )}
                 </span>
                 <span className="play-side">
                   {isPlaying && STATE_BADGE[playState] && (
@@ -194,6 +200,7 @@ export function CueList(props: Props) {
             </div>
             {menuId === cue.id && !props.locked && (
               <div className="row-menu">
+                {!meta && <RelinkButton cueId={cue.id} />}
                 <button className="btn" onClick={() => { setMenuId(null); props.onRename(cue) }}>
                   이름 변경
                 </button>
