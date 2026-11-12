@@ -93,3 +93,206 @@ button {
   font-size: 28px;
   color: var(--text);
 }
+
+/* ───────── 공용 화면 요소 ───────── */
+.page {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+.card h2 {
+  margin: 0 0 12px;
+  font-size: 20px;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.row:last-child {
+  margin-bottom: 0;
+}
+
+.grow {
+  flex: 1 1 auto;
+}
+
+.wide {
+  width: 100%;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 15px;
+}
+
+.btn {
+  flex: 1 1 140px;
+  min-height: 56px;
+  padding: 0 18px;
+  font-size: 18px;
+  font-weight: 700;
+  background: #20242e;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.btn-primary {
+  border-color: var(--accent);
+  background: #241a12;
+}
+
+.btn-danger {
+  border-color: #6b2a2a;
+  color: #ff8a8a;
+}
+
+.small-btn {
+  flex: 0 0 auto;
+  min-height: 48px;
+  font-size: 16px;
+}
+
+.select {
+  min-height: 56px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 19px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.status-text {
+  margin: 12px 0 0;
+}
+
+.status-text p {
+  margin: 0;
+}
+
+.error-text,
+.error-list {
+  color: #ff8a8a;
+}
+
+.error-list {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+
+.ok-text {
+  color: #3ccf7a;
+}
+
+.warn-text {
+  color: #ffc94d;
+}
+
+.info-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  margin: 0 0 14px;
+}
+
+.info-list dt {
+  color: var(--muted);
+}
+
+.info-list dd {
+  margin: 0;
+}
+
+.cue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cue-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.cue-row:first-child {
+  border-top: none;
+}
+
+.cue-no {
+  flex: 0 0 36px;
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cue-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.cue-title {
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.cue-name > span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropzone {
+  position: relative;
+  min-height: 100%;
+}
+
+.dropzone-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--text);
+  background: rgba(14, 15, 19, 0.85);
+  border: 4px dashed var(--accent);
+  pointer-events: none;
+}

@@ -10,6 +10,7 @@
  * - 위치는 AudioContext.currentTime 기준으로 계산한다.
  */
 import type { CueRange } from './envelope.ts'
+import { decodeAudio } from './decode.ts'
 import { createOutput, resolveOutputKind, type Output } from './output.ts'
 import type {
   ContextState,
@@ -129,11 +130,7 @@ export class AudioEngine {
     if (inFlight) return inFlight
 
     const ctx = this.ensureContext()
-    const p = new Promise<AudioBuffer>((resolve, reject) => {
-      // 오래된 사파리는 콜백 방식만 지원하므로 둘 다 연결
-      const ret = ctx.decodeAudioData(data, resolve, reject)
-      if (ret && typeof ret.then === 'function') ret.then(resolve, reject)
-    }).then(
+    const p: Promise<AudioBuffer> = decodeAudio(ctx, data).then(
       (buffer) => {
         // 디코딩 중에 unload되었다면 캐시하지 않는다
         if (this.loading.get(audioId) === p) {

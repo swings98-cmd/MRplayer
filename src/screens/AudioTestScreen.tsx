@@ -1,12 +1,18 @@
 /**
- * ⚠️ 임시 확인용 화면 — 오디오 엔진 동작 확인이 끝나면 지운다.
+ * ⚠️ 임시 확인용 화면 — 다음 단계에서 지운다.
+ * 저장된 큐를 골라 재생한다. 큐 설정 칸을 바꾸면 그 큐에 자동 저장된다.
  * 지울 때: 이 파일, AudioTestScreen.css, uiStore의 'test' 탭, TabBar/App의 test 항목
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { audioEngine, type CueSettings, type OutputMode } from '../audio/index.ts'
+import { loadCueAudio, useProjectStore } from '../store/projectStore.ts'
+import type { Cue } from '../store/types.ts'
 import './AudioTestScreen.css'
 
-const AUDIO_ID = 'test'
+/** 큐 설정 칸 (바꾸면 큐에 저장되는 것) */
+const CUE_FIELDS = ['inPoint', 'outPoint', 'fadeIn', 'fadeOut', 'volumeDb'] as const
+type CueField = (typeof CUE_FIELDS)[number]
+const isCueField = (k: string): k is CueField => (CUE_FIELDS as readonly string[]).includes(k)
 const BEEP_ID = 'beep'
 const MODE_KEY = 'mr.test.outputMode'
 /** 이 크기(-60dBFS)를 넘으면 소리가 나기 시작한 것으로 본다 */
@@ -71,8 +77,12 @@ function clock(): string {
 export function AudioTestScreen() {
   const snap = useSyncExternalStore(audioEngine.subscribe, audioEngine.getSnapshot)
 
-  const [fileInfo, setFileInfo] = useState('선택된 파일 없음')
-  const [loaded, setLoaded] = useState(audioEngine.isLoaded(AUDIO_ID))
+  const cues = useProjectStore((s) => s.cues)
+  const updateCue = useProjectStore((s) => s.updateCue)
+  const [cueId, setCueId] = useState<string>('')
+  const [cueInfo, setCueInfo] = useState('큐를 고르세요')
+  const [loaded, setLoaded] = useState(false)
+  const selected = cues.find((c) => c.id === cueId)
   const [mode, setMode] = useState<OutputMode>(readMode)
   const [f, setF] = useState({
     inPoint: '0',
@@ -122,31 +132,46 @@ export function AudioTestScreen() {
     return Number.isFinite(v) ? v : fallback
   }
 
-  const cue = (): CueSettings => ({
-    audioId: AUDIO_ID,
-    inPoint: num(f.inPoint, 0),
-    outPoint: f.outPoint.trim() === '' ? null : num(f.outPoint, 0),
-    fadeIn: num(f.fadeIn, 0),
-    fadeOut: num(f.fadeOut, 0),
-    volumeDb: num(f.volumeDb, 0),
-  })
+  /** 재생에 쓰는 설정은 항상 저장된 큐의 최신 값 */
+  const cue = (): CueSettings | null => (selected ? { ...selected } : null)
 
-  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    audioEngine.unload(AUDIO_ID)
+  const onSelectCue = async (id: string) => {
+    setCueId(id)
     setLoaded(false)
-    setFileInfo(`${file.name} — 디코딩 중…`)
-    try {
-      const buf = await audioEngine.load(AUDIO_ID, await file.arrayBuffer())
-      buffers.current.set(AUDIO_ID, buf)
-      setLoaded(true)
-      setFileInfo(`${file.name} — ${buf.duration.toFixed(2)}초, 앞 무음 ${(leadingSilence(buf, 0) * 1000).toFixed(0)}ms`)
-      log(`로드 완료: ${file.name} (${buf.duration.toFixed(2)}초)`)
-    } catch (err) {
-      setFileInfo(`${file.name} — 디코딩 실패`)
-      log(`디코딩 실패: ${String(err)}`)
+    const c = cues.find((x) => x.id === id)
+    if (!c) {
+      setCueInfo('큐를 고르세요')
+      return
     }
+    setF((prev) => ({
+      ...prev,
+      inPoint: String(c.inPoint),
+      outPoint: c.outPoint === null ? '' : String(c.outPoint),
+      fadeIn: String(c.fadeIn),
+      fadeOut: String(c.fadeOut),
+      volumeDb: String(c.volumeDb),
+    }))
+    setCueInfo(`${c.name} — 음원 준비 중…`)
+    try {
+      const buf = await loadCueAudio(c)
+      buffers.current.set(c.audioId, buf)
+      setLoaded(true)
+      setCueInfo(`${c.name} — ${buf.duration.toFixed(2)}초, 앞 무음 ${(leadingSilence(buf, 0) * 1000).toFixed(0)}ms`)
+      log(`음원 준비 완료: ${c.name}`)
+    } catch (err) {
+      setCueInfo(`${c.name} — 음원을 불러오지 못함`)
+      log(`음원 준비 실패: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  /** 칸 값을 큐에 저장 (숫자로 읽을 수 있을 때만) */
+  const saveField = (c: Cue, key: CueField, raw: string) => {
+    if (key === 'outPoint' && raw.trim() === '') {
+      updateCue(c.id, { outPoint: null })
+      return
+    }
+    const v = parseFloat(raw)
+    if (Number.isFinite(v)) updateCue(c.id, { [key]: v })
   }
 
   /** 버튼을 누른 시각부터 마스터 출력에 소리가 감지될 때까지의 시간 */
@@ -216,8 +241,11 @@ export function AudioTestScreen() {
     }
   }
 
-  const onPlay = (withStartAt: boolean) =>
-    goPlay(withStartAt ? `play (startAt ${f.startAt}초)` : 'play', cue(), withStartAt ? num(f.startAt, 0) : undefined)
+  const onPlay = (withStartAt: boolean) => {
+    const c = cue()
+    if (!c) return
+    goPlay(withStartAt ? `play (startAt ${f.startAt}초)` : 'play', c, withStartAt ? num(f.startAt, 0) : undefined)
+  }
 
   const onBeep = () =>
     goPlay('테스트 톤', { audioId: BEEP_ID, inPoint: 0, outPoint: null, fadeIn: 0, fadeOut: 0, volumeDb: -12 })
@@ -243,7 +271,11 @@ export function AudioTestScreen() {
         step="any"
         value={f[key]}
         placeholder={placeholder}
-        onChange={(e) => setF({ ...f, [key]: e.target.value })}
+        disabled={isCueField(key) && !selected}
+        onChange={(e) => {
+          setF({ ...f, [key]: e.target.value })
+          if (selected && isCueField(key)) saveField(selected, key, e.target.value)
+        }}
       />
     </label>
   )
@@ -253,12 +285,20 @@ export function AudioTestScreen() {
       <p className="at-warn">임시 확인용 화면입니다. 엔진 확인이 끝나면 지웁니다.</p>
 
       <section className="at-card">
-        <h2>음원</h2>
-        <label className="at-file">
-          음원 파일 선택
-          <input type="file" accept="audio/*,.mp3,.wav,.m4a" onChange={onFile} />
-        </label>
-        <p className="at-muted">{fileInfo}</p>
+        <h2>저장된 큐</h2>
+        {cues.length === 0 ? (
+          <p className="at-muted">큐가 없습니다. 편집 탭에서 음원을 불러오세요.</p>
+        ) : (
+          <select className="select wide" value={cueId} onChange={(e) => void onSelectCue(e.target.value)}>
+            <option value="">큐 선택…</option>
+            {cues.map((c, i) => (
+              <option key={c.id} value={c.id}>
+                {i + 1}. {c.name}
+              </option>
+            ))}
+          </select>
+        )}
+        <p className="at-muted">{cueInfo}</p>
       </section>
 
       <section className="at-card">
@@ -283,7 +323,7 @@ export function AudioTestScreen() {
       </section>
 
       <section className="at-card">
-        <h2>큐 설정</h2>
+        <h2>큐 설정 {selected && <span className="at-muted">(바꾸면 자동 저장)</span>}</h2>
         <div className="at-grid">
           {field('inPoint', '인 포인트 (초)')}
           {field('outPoint', '아웃 포인트 (초)', '비우면 끝까지')}
@@ -313,11 +353,13 @@ export function AudioTestScreen() {
           <button onClick={() => run('pause', () => audioEngine.pause())}>pause</button>
           <button onClick={() => run('resume', () => audioEngine.resume())}>resume</button>
           <button
+            disabled={!selected}
             onClick={() =>
               run('unload', () => {
-                audioEngine.unload(AUDIO_ID)
+                if (!selected) return
+                audioEngine.unload(selected.audioId)
                 setLoaded(false)
-                setFileInfo('언로드됨 (파일을 다시 선택하세요)')
+                setCueInfo('언로드됨 (큐를 다시 고르세요)')
               })
             }
           >

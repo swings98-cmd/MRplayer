@@ -14,3 +14,4 @@ export type {
   PlaybackState,
 } from './types.ts'
 export { dbToGain, gainToDb, SILENCE_DB } from './volume.ts'
+export { analyzeAudio, PEAKS_PER_SECOND, type AudioAnalysis } from './analyze.ts'
